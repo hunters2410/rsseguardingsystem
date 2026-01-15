@@ -1,6 +1,19 @@
-import { useEffect, useState } from 'react';
-import { Brain, Plus, Edit, Trash2, X, Power, Activity, Upload, FileCode } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Brain, Plus, Edit, Trash2, X, Power, Activity, Upload, FileCode, Search, ChevronDown, Check } from 'lucide-react';
 import { supabase, type AIModel, type AIServer } from '../lib/supabase';
+
+const MODEL_TYPES = [
+  { value: 'person_detection', label: 'Person Detection' },
+  { value: 'vehicle_detection', label: 'Vehicle Detection' },
+  { value: 'face_recognition', label: 'Face Recognition' },
+  { value: 'motion_detection', label: 'Motion Detection' },
+  { value: 'intrusion_detection', label: 'Intrusion Detection' },
+  { value: 'crowd_detection', label: 'Crowd Detection' },
+  { value: 'object_tracking', label: 'Object Tracking' },
+  { value: 'weapon_detection', label: 'Weapon Detection' },
+  { value: 'fire_detection', label: 'Fire/Smoke Detection' },
+  { value: 'other', label: 'Other' }
+];
 
 export default function AIModelManagement() {
   const [models, setModels] = useState<AIModel[]>([]);
@@ -9,6 +22,12 @@ export default function AIModelManagement() {
   const [editingModel, setEditingModel] = useState<AIModel | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // Searchable Select State
+  const [isTypeOpen, setIsTypeOpen] = useState(false);
+  const [typeSearch, setTypeSearch] = useState('');
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -22,6 +41,15 @@ export default function AIModelManagement() {
   useEffect(() => {
     loadModels();
     loadServers();
+
+    // Click outside to close dropdown
+    const handleClickOutside = (event: MouseEvent) => {
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target as Node)) {
+        setIsTypeOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const loadModels = async () => {
@@ -120,6 +148,7 @@ export default function AIModelManagement() {
     setEditingModel(null);
     setSelectedFile(null);
     setUploading(false);
+    setIsTypeOpen(false);
     setFormData({
       name: '',
       description: '',
@@ -133,16 +162,14 @@ export default function AIModelManagement() {
 
   const getModelTypeColor = (type: string) => {
     switch (type) {
-      case 'person_detection':
-        return 'bg-blue-100 text-blue-700';
-      case 'vehicle_detection':
-        return 'bg-green-100 text-green-700';
-      case 'face_recognition':
-        return 'bg-purple-100 text-purple-700';
-      case 'motion_detection':
-        return 'bg-orange-100 text-orange-700';
-      default:
-        return 'bg-slate-100 dark:bg-slate-700 text-slate-700';
+      case 'person_detection': return 'bg-blue-100 text-blue-700';
+      case 'vehicle_detection': return 'bg-green-100 text-green-700';
+      case 'face_recognition': return 'bg-purple-100 text-purple-700';
+      case 'motion_detection': return 'bg-orange-100 text-orange-700';
+      case 'weapon_detection': return 'bg-red-100 text-red-700';
+      case 'fire_detection': return 'bg-red-100 text-red-700';
+      case 'other': return 'bg-gray-100 text-gray-700';
+      default: return 'bg-slate-100 dark:bg-slate-700 text-slate-700';
     }
   };
 
@@ -151,6 +178,11 @@ export default function AIModelManagement() {
     const server = servers.find((s) => s.id === serverId);
     return server ? server.name : 'Unknown';
   };
+
+  // Filtered model types
+  const filteredModelTypes = MODEL_TYPES.filter(t =>
+    t.label.toLowerCase().includes(typeSearch.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
@@ -184,8 +216,8 @@ export default function AIModelManagement() {
               <button
                 onClick={() => toggleModelStatus(model)}
                 className={`p-2 rounded-lg transition-colors ${model.is_active
-                    ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                  ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
                   }`}
               >
                 <Power size={18} />
@@ -200,7 +232,7 @@ export default function AIModelManagement() {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600 dark:text-slate-400">Type:</span>
                 <span className={`px-2 py-1 rounded text-xs font-medium ${getModelTypeColor(model.model_type)}`}>
-                  {model.model_type.replace('_', ' ')}
+                  {MODEL_TYPES.find(t => t.value === model.model_type)?.label || model.model_type.replace('_', ' ')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -298,21 +330,54 @@ export default function AIModelManagement() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div ref={typeDropdownRef} className="relative">
                   <label className="block text-sm font-medium text-slate-700 mb-1">Model Type</label>
-                  <select
-                    value={formData.model_type}
-                    onChange={(e) => setFormData({ ...formData, model_type: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+                  <button
+                    type="button"
+                    onClick={() => setIsTypeOpen(!isTypeOpen)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white dark:bg-slate-700 text-left flex justify-between items-center focus:ring-2 focus:ring-red-500 dark:text-white"
                   >
-                    <option value="person_detection">Person Detection</option>
-                    <option value="vehicle_detection">Vehicle Detection</option>
-                    <option value="face_recognition">Face Recognition</option>
-                    <option value="motion_detection">Motion Detection</option>
-                    <option value="intrusion_detection">Intrusion Detection</option>
-                    <option value="crowd_detection">Crowd Detection</option>
-                    <option value="object_tracking">Object Tracking</option>
-                  </select>
+                    <span>
+                      {MODEL_TYPES.find(t => t.value === formData.model_type)?.label || 'Select Type'}
+                    </span>
+                    <ChevronDown size={16} />
+                  </button>
+
+                  {isTypeOpen && (
+                    <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      <div className="sticky top-0 p-2 bg-white dark:bg-slate-700 border-b border-slate-200 dark:border-slate-600">
+                        <div className="flex items-center px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded">
+                          <Search size={14} className="text-slate-400 mr-2" />
+                          <input
+                            type="text"
+                            value={typeSearch}
+                            onChange={(e) => setTypeSearch(e.target.value)}
+                            className="bg-transparent border-none focus:ring-0 text-sm w-full dark:text-white"
+                            placeholder="Search types..."
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      <div className="p-1">
+                        {filteredModelTypes.map(type => (
+                          <div
+                            key={type.value}
+                            onClick={() => {
+                              setFormData({ ...formData, model_type: type.value });
+                              setIsTypeOpen(false);
+                            }}
+                            className="px-3 py-2 text-sm rounded cursor-pointer hover:bg-red-50 dark:hover:bg-slate-600 flex justify-between items-center text-slate-700 dark:text-slate-200"
+                          >
+                            {type.label}
+                            {formData.model_type === type.value && <Check size={14} className="text-red-500" />}
+                          </div>
+                        ))}
+                        {filteredModelTypes.length === 0 && (
+                          <div className="px-3 py-2 text-sm text-slate-500 text-center">No matches found</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
