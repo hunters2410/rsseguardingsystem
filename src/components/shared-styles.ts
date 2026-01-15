@@ -1,0 +1,9 @@
+export const cardStyles = "bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700";
+export const inputStyles = "w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent";
+export const buttonPrimaryStyles = "bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors";
+export const buttonSecondaryStyles = "bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg transition-colors";
+export const textPrimaryStyles = "text-slate-900 dark:text-white";
+export const textSecondaryStyles = "text-slate-600 dark:text-slate-400";
+export const modalOverlayStyles = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50";
+export const modalContentStyles = "bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-2xl w-full";
+export const headerStyles = "text-2xl md:text-3xl font-bold text-slate-900 dark:text-white";
