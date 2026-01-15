@@ -16,6 +16,7 @@ export default function CameraManagement() {
     password: '',
     resolution: '1920x1080',
     fps: 25,
+    status: 'online',
   });
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function CameraManagement() {
       password: camera.password || '',
       resolution: camera.resolution || '1920x1080',
       fps: camera.fps || 25,
+      status: camera.status || 'online',
     });
     setShowModal(true);
   };
@@ -79,6 +81,7 @@ export default function CameraManagement() {
       password: '',
       resolution: '1920x1080',
       fps: 25,
+      status: 'online',
     });
   };
 

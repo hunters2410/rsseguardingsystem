@@ -12,7 +12,7 @@ export default function LiveMonitoring() {
   }, []);
 
   const loadCameras = async () => {
-    const { data } = await supabase.from('cameras').select('*').eq('status', 'online').order('name');
+    const { data } = await supabase.from('cameras').select('*').order('name');
     if (data) setCameras(data);
   };
 
