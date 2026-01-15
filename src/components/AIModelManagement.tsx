@@ -12,6 +12,7 @@ const MODEL_TYPES = [
   { value: 'object_tracking', label: 'Object Tracking' },
   { value: 'weapon_detection', label: 'Weapon Detection' },
   { value: 'fire_detection', label: 'Fire/Smoke Detection' },
+  { value: 'animal_detection', label: 'Animal Detection' },
   { value: 'other', label: 'Other' }
 ];
 
@@ -168,6 +169,7 @@ export default function AIModelManagement() {
       case 'motion_detection': return 'bg-orange-100 text-orange-700';
       case 'weapon_detection': return 'bg-red-100 text-red-700';
       case 'fire_detection': return 'bg-red-100 text-red-700';
+      case 'animal_detection': return 'bg-amber-100 text-amber-700';
       case 'other': return 'bg-gray-100 text-gray-700';
       default: return 'bg-slate-100 dark:bg-slate-700 text-slate-700';
     }
