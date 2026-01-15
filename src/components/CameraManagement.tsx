@@ -264,6 +264,10 @@ export default function CameraManagement() {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
                   placeholder="rtsp://192.168.1.100:554/stream1"
                 />
+                <p className="text-xs text-slate-500 mt-1">
+                  * For browser streaming, use an HLS or HTTP-FLV URL (e.g., http://localhost:8888/cam1).
+                  Raw RTSP links will not play directly in browsers.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

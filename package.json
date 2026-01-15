@@ -8,13 +8,16 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "stream": "cd streaming-server && mediamtx.exe"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
+    "hls.js": "^1.6.15",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-player": "^3.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
