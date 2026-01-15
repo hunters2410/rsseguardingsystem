@@ -50,6 +50,7 @@ export type AIModel = {
   accuracy?: number;
   server_id?: string;
   is_active: boolean;
+  model_path?: string; // Path to the .pt/.onnx file in Storage
   created_at: string;
 };
 
