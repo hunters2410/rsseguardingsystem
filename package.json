@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "stream": "cd streaming-server && mediamtx.exe"
+    "stream": "cd streaming-server && mediamtx.exe",
+    "ai-server": "cd ai-server && py main.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

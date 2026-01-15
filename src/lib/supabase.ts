@@ -65,3 +65,56 @@ export type Event = {
   acknowledged: boolean;
   created_at: string;
 };
+
+export type Dataset = {
+  id: string;
+  name: string;
+  description?: string;
+  type: string;
+  format: string;
+  storage_path: string;
+  image_count: number;
+  created_at: string;
+};
+
+export type TrainingJob = {
+  id: string;
+  dataset_id: string;
+  server_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  base_model: string;
+  epochs: number;
+  current_epoch: number;
+  progress: number;
+  logs?: string[];
+  resulting_model_id?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CameraModel = {
+  id: string;
+  camera_id: string;
+  ai_model_id: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type SystemSettings = {
+  id: string;
+  company_name: string;
+  admin_email: string;
+  retention_days: number;
+  alert_email_enabled: boolean;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_user?: string;
+  smtp_pass?: string;
+  smtp_from?: string;
+  alert_sms_enabled: boolean;
+  sms_provider?: string;
+  sms_account_sid?: string;
+  sms_auth_token?: string;
+  sms_from?: string;
+  updated_at: string;
+};

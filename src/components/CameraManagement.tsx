@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Camera, Plus, Edit, Trash2, Video, VideoOff, X } from 'lucide-react';
+import { Camera, Plus, Edit, Trash2, Video, VideoOff, X, Brain, Search, LayoutList, LayoutGrid } from 'lucide-react';
+import CameraModelAssignment from './CameraModelAssignment';
 import { supabase, type Camera as CameraType } from '../lib/supabase';
 
 export default function CameraManagement() {
   const [cameras, setCameras] = useState<CameraType[]>([]);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [showModal, setShowModal] = useState(false);
   const [editingCamera, setEditingCamera] = useState<CameraType | null>(null);
+  const [activeConfigCamera, setActiveConfigCamera] = useState<CameraType | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     location: '',
@@ -103,78 +107,179 @@ export default function CameraManagement() {
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Camera Management</h1>
           <p className="text-slate-600 mt-1">Manage all CCTV camera channels</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-        >
-          <Plus size={20} />
-          Add Camera
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search cameras..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+          <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+            >
+              <LayoutList size={18} />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+            >
+              <LayoutGrid size={18} />
+            </button>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            <Plus size={20} />
+            Add Camera
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        {cameras.map((camera) => (
-          <div key={camera.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-100 p-3 rounded-lg">
-                  <Camera className="text-blue-600" size={24} />
+      <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6" : "space-y-4"}>
+        {viewMode === 'list' ? (
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Name</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Location</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Brand</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Status</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Recording</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                {cameras.filter(c =>
+                  c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  c.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  c.brand.toLowerCase().includes(searchQuery.toLowerCase())
+                ).map((camera) => (
+                  <tr key={camera.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                    <td className="p-4 font-medium text-slate-900 dark:text-white flex items-center gap-3">
+                      <div className="bg-blue-100 p-2 rounded-lg">
+                        <Camera className="text-blue-600" size={18} />
+                      </div>
+                      {camera.name}
+                    </td>
+                    <td className="p-4 text-slate-600 dark:text-slate-400">{camera.location}</td>
+                    <td className="p-4 text-slate-600 dark:text-slate-400">{camera.brand}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(camera.status)}`}>
+                        {camera.status}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className="flex items-center gap-1">
+                        {camera.is_recording ? (
+                          <Video className="text-red-600" size={16} />
+                        ) : (
+                          <VideoOff className="text-slate-400" size={16} />
+                        )}
+                        <span className={`text-sm ${camera.is_recording ? 'text-red-600' : 'text-slate-400'}`}>
+                          {camera.is_recording ? 'Active' : 'Inactive'}
+                        </span>
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex gap-2">
+                        <button onClick={() => setActiveConfigCamera(camera)} className="p-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100" title="AI Configuration">
+                          <Brain size={16} />
+                        </button>
+                        <button onClick={() => handleEdit(camera)} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600">
+                          <Edit size={16} />
+                        </button>
+                        <button onClick={() => handleDelete(camera.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          cameras.filter(c =>
+            c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            c.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            c.brand.toLowerCase().includes(searchQuery.toLowerCase())
+          ).map((camera) => (
+            <div key={camera.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-100 p-3 rounded-lg">
+                    <Camera className="text-blue-600" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-900 dark:text-white">{camera.name}</h3>
+                    <p className="text-sm text-slate-500">{camera.location}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">{camera.name}</h3>
-                  <p className="text-sm text-slate-500">{camera.location}</p>
-                </div>
-              </div>
-              <span className={`px-2 py-1 rounded text-xs font-medium border ${getStatusColor(camera.status)}`}>
-                {camera.status}
-              </span>
-            </div>
-
-            <div className="space-y-2 text-sm mb-4">
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Brand:</span>
-                <span className="font-medium text-slate-900 dark:text-white">{camera.brand}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Type:</span>
-                <span className="font-medium text-slate-900 dark:text-white">{camera.connection_type.toUpperCase()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Resolution:</span>
-                <span className="font-medium text-slate-900 dark:text-white">{camera.resolution}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Recording:</span>
-                <span className="flex items-center gap-1">
-                  {camera.is_recording ? (
-                    <Video className="text-red-600" size={16} />
-                  ) : (
-                    <VideoOff className="text-slate-400" size={16} />
-                  )}
-                  <span className={camera.is_recording ? 'text-red-600' : 'text-slate-400'}>
-                    {camera.is_recording ? 'Active' : 'Inactive'}
-                  </span>
+                <span className={`px-2 py-1 rounded text-xs font-medium border ${getStatusColor(camera.status)}`}>
+                  {camera.status}
                 </span>
               </div>
-            </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleEdit(camera)}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-              >
-                <Edit size={16} />
-                Edit
-              </button>
-              <button
-                onClick={() => handleDelete(camera.id)}
-                className="flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="space-y-2 text-sm mb-4">
+                <div className="flex justify-between">
+                  <span className="text-slate-600 dark:text-slate-400">Brand:</span>
+                  <span className="font-medium text-slate-900 dark:text-white">{camera.brand}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600 dark:text-slate-400">Type:</span>
+                  <span className="font-medium text-slate-900 dark:text-white">{camera.connection_type.toUpperCase()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600 dark:text-slate-400">Resolution:</span>
+                  <span className="font-medium text-slate-900 dark:text-white">{camera.resolution}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600 dark:text-slate-400">Recording:</span>
+                  <span className="flex items-center gap-1">
+                    {camera.is_recording ? (
+                      <Video className="text-red-600" size={16} />
+                    ) : (
+                      <VideoOff className="text-slate-400" size={16} />
+                    )}
+                    <span className={camera.is_recording ? 'text-red-600' : 'text-slate-400'}>
+                      {camera.is_recording ? 'Active' : 'Inactive'}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setActiveConfigCamera(camera)}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors"
+                  title="AI Configuration"
+                >
+                  <Brain size={16} />
+                </button>
+                <button
+                  onClick={() => handleEdit(camera)}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                >
+                  <Edit size={16} />
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDelete(camera.id)}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )))}
       </div>
 
       {cameras.length === 0 && (
@@ -341,6 +446,13 @@ export default function CameraManagement() {
             </form>
           </div>
         </div>
+      )}
+
+      {activeConfigCamera && (
+        <CameraModelAssignment
+          camera={activeConfigCamera}
+          onClose={() => setActiveConfigCamera(null)}
+        />
       )}
     </div>
   );

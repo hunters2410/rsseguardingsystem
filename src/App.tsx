@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Menu } from 'lucide-react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Sidebar from './components/Sidebar';
@@ -12,10 +11,21 @@ import EventsMonitoring from './components/EventsMonitoring';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import Footer from './components/Footer';
+import TrainingManagement from './components/TrainingManagement';
+import Header from './components/Header';
+import Settings from './components/Settings';
+import EventNotification from './components/EventNotification';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(() => {
+    return localStorage.getItem('activeView') || 'dashboard';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('activeView', activeView);
+  }, [activeView]);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(() => {
     const saved = localStorage.getItem('sidebarMinimized');
@@ -41,6 +51,10 @@ function AppContent() {
         return <LiveMonitoring />;
       case 'events':
         return <EventsMonitoring />;
+      case 'training':
+        return <TrainingManagement />;
+      case 'settings':
+        return <Settings />;
       default:
         return <Dashboard />;
     }
@@ -79,19 +93,17 @@ function AppContent() {
         isMinimized={sidebarMinimized}
         onToggleMinimize={() => setSidebarMinimized(!sidebarMinimized)}
       />
-      <main className="flex-1 flex flex-col">
-        <header className="lg:hidden bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
-          >
-            <Menu size={24} />
-          </button>
-        </header>
-        <div className="flex-1 p-4 md:p-8 overflow-y-auto">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+        <Header
+          onMenuClick={() => setSidebarOpen(true)}
+          title={activeView === 'dashboard' ? 'Overview' : activeView.charAt(0).toUpperCase() + activeView.slice(1)}
+          onNavigate={handleViewChange}
+        />
+        <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-100 dark:bg-slate-900">
           {renderView()}
         </div>
         <Footer />
+        <EventNotification />
       </main>
     </div>
   );

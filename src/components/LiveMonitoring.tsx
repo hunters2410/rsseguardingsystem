@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Monitor, Maximize2, AlertCircle, Grid, LayoutGrid } from 'lucide-react';
+import { Monitor, Maximize2, AlertCircle, Grid, LayoutGrid, Search } from 'lucide-react';
 import { supabase, type Camera } from '../lib/supabase';
 import StreamPlayer from './StreamPlayer';
 
 export default function LiveMonitoring() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [gridCols, setGridCols] = useState(4); // Default to 4 columns
 
   useEffect(() => {
@@ -62,6 +63,17 @@ export default function LiveMonitoring() {
         </div>
 
         <div className="flex items-center gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search cameras..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+
           <div className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => setGridCols(1)}
@@ -101,7 +113,10 @@ export default function LiveMonitoring() {
         </div>
       ) : (
         <div className={`grid ${getResponsiveGridClass()} gap-4`}>
-          {cameras.map((camera) => (
+          {cameras.filter(c =>
+            c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            c.location.toLowerCase().includes(searchQuery.toLowerCase())
+          ).map((camera) => (
             <div
               key={camera.id}
               className="bg-slate-900 rounded-xl overflow-hidden shadow-lg border-2 border-slate-700 hover:border-red-500 transition-all cursor-pointer flex flex-col group"

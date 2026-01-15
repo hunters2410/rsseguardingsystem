@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Camera, Server, Brain, AlertCircle, Activity, TrendingUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { SimpleBarChart, SimplePieChart } from './DashboardCharts';
 
 type Stats = {
   totalCameras: number;
@@ -21,9 +22,16 @@ export default function Dashboard() {
     unacknowledgedEvents: 0,
   });
 
+  const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>([]);
+  const [distributionData, setDistributionData] = useState<{ label: string; value: number; color: string }[]>([]);
+
   useEffect(() => {
     loadStats();
-    const interval = setInterval(loadStats, 10000);
+    loadChartData();
+    const interval = setInterval(() => {
+      loadStats();
+      loadChartData();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -44,6 +52,72 @@ export default function Dashboard() {
       recentEvents: eventsRes.data?.length || 0,
       unacknowledgedEvents: unackEventsRes.data?.length || 0,
     });
+  };
+
+  const loadChartData = async () => {
+    // 1. Weekly Activity (Last 7 Days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const { data: recentEvents } = await supabase
+      .from('events')
+      .select('created_at, event_type')
+      .gte('created_at', sevenDaysAgo.toISOString());
+
+    if (recentEvents) {
+      // Process Weekly Data
+      const daysMap = new Map<string, number>();
+      // Init last 7 days
+      for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toLocaleDateString('en-US', { weekday: 'short' });
+        daysMap.set(dateStr, 0); // Default 0
+      }
+
+      const typeMap = new Map<string, number>();
+
+      recentEvents.forEach(e => {
+        const dateStr = new Date(e.created_at).toLocaleDateString('en-US', { weekday: 'short' });
+        if (daysMap.has(dateStr)) {
+          // Re-creating map keys order is tricky if not sorted, but for bar chart we want chronological usually.
+          // Or simplified: just use the map.
+          // We actually want to count UP to today.
+        }
+
+        // Count distribution
+        const type = e.event_type || 'Unknown';
+        typeMap.set(type, (typeMap.get(type) || 0) + 1);
+      });
+
+      // Re-construct chronological array
+      const chartData = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toLocaleDateString('en-US', { weekday: 'short' });
+
+        // Count matching events
+        const count = recentEvents.filter(e => {
+          const eDate = new Date(e.created_at);
+          return eDate.getDate() === d.getDate() && eDate.getMonth() === d.getMonth();
+        }).length;
+
+        chartData.push({ label: dateStr, value: count });
+      }
+      setWeeklyData(chartData);
+
+      // Process Distribution Data
+      const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+      const distData = Array.from(typeMap.entries()).map(([label, value], idx) => ({
+        label: label.replace('_', ' '),
+        value,
+        color: COLORS[idx % COLORS.length]
+      })).sort((a, b) => b.value - a.value); // Sort by highest
+
+      setDistributionData(distData);
+    }
   };
 
   const statCards = [
@@ -123,6 +197,19 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Graphs Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SimpleBarChart
+          title="Weekly Activity"
+          data={weeklyData}
+          color="#ef4444"
+        />
+        <SimplePieChart
+          title="Event Distribution (7 Days)"
+          data={distributionData}
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 border border-slate-200 dark:border-slate-700">
