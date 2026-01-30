@@ -18,6 +18,8 @@ export type Camera = {
   stream_url: string;
   username?: string;
   password?: string;
+  ip_address?: string; // For saving configuration
+  port?: number;      // For saving configuration
   status: string;
   resolution?: string;
   fps?: number;
@@ -51,6 +53,7 @@ export type AIModel = {
   server_id?: string;
   is_active: boolean;
   model_path?: string; // Path to the .pt/.onnx file in Storage
+  smart_reporting?: boolean;
   created_at: string;
 };
 

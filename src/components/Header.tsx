@@ -10,7 +10,7 @@ type HeaderProps = {
 };
 
 export default function Header({ onMenuClick, title, onNavigate }: HeaderProps) {
-    const { user, signOut } = useAuth();
+    const { user, role, signOut } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -68,7 +68,9 @@ export default function Header({ onMenuClick, title, onNavigate }: HeaderProps) 
                                 {user?.email?.[0].toUpperCase() || 'U'}
                             </div>
                             <div className="hidden md:block text-left">
-                                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Admin</p>
+                                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize">
+                                    {role ? (role === 'admin' ? 'System Administrator' : 'System Viewer') : 'Verifying Profile...'}
+                                </p>
                             </div>
                             <ChevronDown size={14} className="text-slate-400" />
                         </button>

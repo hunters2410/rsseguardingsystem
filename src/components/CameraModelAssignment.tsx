@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Check, Brain, Loader2 } from 'lucide-react';
+import { X, Check, Brain, Loader2, Power } from 'lucide-react';
 import { supabase, type Camera, type AIModel } from '../lib/supabase';
 
 type Props = {
@@ -12,6 +12,7 @@ export default function CameraModelAssignment({ camera, onClose }: Props) {
     const [assignments, setAssignments] = useState<string[]>([]); // List of model_ids assigned
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState<string | null>(null);
+    const [togglingStatus, setTogglingStatus] = useState<string | null>(null);
 
     useEffect(() => {
         loadData();
@@ -23,7 +24,6 @@ export default function CameraModelAssignment({ camera, onClose }: Props) {
         const { data: allModels } = await supabase
             .from('ai_models')
             .select('*')
-            .eq('is_active', true)
             .order('name');
 
         // Fetch current assignments for this camera
@@ -62,6 +62,24 @@ export default function CameraModelAssignment({ camera, onClose }: Props) {
         setProcessing(null);
     };
 
+    const toggleModelStatus = async (e: any, model: AIModel) => {
+        e.stopPropagation(); // Prevent assigning/unassigning when clicking toggle
+        setTogglingStatus(model.id);
+
+        const { error } = await supabase
+            .from('ai_models')
+            .update({ is_active: !model.is_active })
+            .eq('id', model.id);
+
+        if (!error) {
+            // Update local state to reflect change immediately
+            setModels(prev => prev.map(m =>
+                m.id === model.id ? { ...m, is_active: !m.is_active } : m
+            ));
+        }
+        setTogglingStatus(null);
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[80vh]">
@@ -98,7 +116,31 @@ export default function CameraModelAssignment({ camera, onClose }: Props) {
                                             <h4 className={`font-medium ${isAssigned ? 'text-red-700 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>
                                                 {model.name}
                                             </h4>
-                                            <p className="text-xs text-slate-500 capitalize">{model.model_type.replace('_', ' ')}</p>
+                                            <div className="flex flex-col gap-1.5 mt-1">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-xs text-slate-500 capitalize">{model.model_type.replace('_', ' ')}</p>
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-wider font-bold ${model.server_id ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-orange-50 text-orange-600 border-orange-100'}`}>
+                                                        {model.server_id ? 'Deployed' : 'No Server'}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <button
+                                                        onClick={(e) => toggleModelStatus(e, model)}
+                                                        className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all ${model.is_active
+                                                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                                            }`}
+                                                        disabled={togglingStatus === model.id}
+                                                    >
+                                                        {togglingStatus === model.id ? (
+                                                            <Loader2 size={10} className="animate-spin" />
+                                                        ) : (
+                                                            <Power size={10} />
+                                                        )}
+                                                        {model.is_active ? 'Active' : 'Enable'}
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex items-center">

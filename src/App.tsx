@@ -15,6 +15,7 @@ import TrainingManagement from './components/TrainingManagement';
 import Header from './components/Header';
 import Settings from './components/Settings';
 import EventNotification from './components/EventNotification';
+import Manual from './components/Manual';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -40,7 +41,7 @@ function AppContent() {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard onNavigate={handleViewChange} />;
       case 'cameras':
         return <CameraManagement />;
       case 'servers':
@@ -53,6 +54,8 @@ function AppContent() {
         return <EventsMonitoring />;
       case 'training':
         return <TrainingManagement />;
+      case 'manual':
+        return <Manual />;
       case 'settings':
         return <Settings />;
       default:
@@ -109,11 +112,14 @@ function AppContent() {
   );
 }
 
+import { Toaster } from 'sonner';
+
 function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <AppContent />
+        <Toaster position="top-right" richColors theme="system" closeButton />
       </AuthProvider>
     </ThemeProvider>
   );

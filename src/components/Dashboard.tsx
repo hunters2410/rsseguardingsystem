@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Camera, Server, Brain, AlertCircle, Activity, TrendingUp } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Camera, Server, Brain, AlertCircle, Activity, TrendingUp, Bell, X, ArrowRight } from 'lucide-react';
+
 import { supabase } from '../lib/supabase';
 import { SimpleBarChart, SimplePieChart } from './DashboardCharts';
 
@@ -12,7 +13,16 @@ type Stats = {
   unacknowledgedEvents: number;
 };
 
-export default function Dashboard() {
+type EventNotification = {
+  id: string;
+  event_type: string;
+  confidence: number;
+  camera_id: string;
+  snapshot_url?: string;
+  created_at: string;
+};
+
+export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const [stats, setStats] = useState<Stats>({
     totalCameras: 0,
     onlineCameras: 0,
@@ -24,15 +34,28 @@ export default function Dashboard() {
 
   const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>([]);
   const [distributionData, setDistributionData] = useState<{ label: string; value: number; color: string }[]>([]);
+  const [notifications, setNotifications] = useState<EventNotification[]>([]);
+  const lastEventIdRef = useRef<string>('');
+  const [countStats, setCountStats] = useState({ vehiclesToday: 0, peopleToday: 0, hourlyActivity: [] as number[] });
 
   useEffect(() => {
     loadStats();
     loadChartData();
-    const interval = setInterval(() => {
+    loadCountingData();
+    checkForNewEvents(); // Initial check
+
+    const statsInterval = setInterval(() => {
       loadStats();
       loadChartData();
     }, 10000);
-    return () => clearInterval(interval);
+
+    // Check for new events more frequently
+    const eventsInterval = setInterval(checkForNewEvents, 3000);
+
+    return () => {
+      clearInterval(statsInterval);
+      clearInterval(eventsInterval);
+    };
   }, []);
 
   const loadStats = async () => {
@@ -120,6 +143,111 @@ export default function Dashboard() {
     }
   };
 
+  const loadCountingData = async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const { data: events } = await supabase
+        .from('events')
+        .select('event_type, created_at')
+        .gte('created_at', today.toISOString());
+
+      if (events) {
+        const vehicles = events.filter(e => e.event_type === 'vehicle_detection').length;
+        const people = events.filter(e => e.event_type === 'person_detection').length;
+
+        const hourly = new Array(24).fill(0);
+        events.forEach(e => {
+          const hour = new Date(e.created_at).getHours();
+          hourly[hour]++;
+        });
+
+        setCountStats({
+          vehiclesToday: vehicles,
+          peopleToday: people,
+          hourlyActivity: hourly
+        });
+      }
+    } catch (error) {
+      console.error('Error loading counting data:', error);
+    }
+  };
+
+  const playBeep = () => {
+    try {
+      // Create audio context and play beep sound
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = 800; // Frequency in Hz
+      oscillator.type = 'sine';
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.log('Could not play beep:', error);
+    }
+  };
+
+  const checkForNewEvents = async () => {
+    try {
+      const { data: latestEvent } = await supabase
+        .from('events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      console.log('Checking for new events...', {
+        latestEventId: latestEvent?.id,
+        lastEventId: lastEventIdRef.current,
+        isNew: latestEvent && latestEvent.id !== lastEventIdRef.current
+      });
+
+      if (latestEvent && latestEvent.id !== lastEventIdRef.current) {
+        // New event detected!
+        console.log('🎯 New event detected!', latestEvent);
+
+        if (lastEventIdRef.current) { // Only notify if we've already loaded (not first load)
+          console.log('Playing beep and showing notification...');
+          playBeep();
+          setNotifications(prev => {
+            const updated = [latestEvent, ...prev].slice(0, 5);
+            console.log('Updated notifications:', updated);
+            return updated;
+          });
+        }
+        lastEventIdRef.current = latestEvent.id;
+      }
+    } catch (error) {
+      console.log('Error checking events or no events:', error);
+    }
+  };
+
+  const dismissNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const getEventTypeEmoji = (type: string) => {
+    switch (type) {
+      case 'person_detection': return '👤';
+      case 'vehicle_detection': return '🚗';
+      case 'intrusion_detection': return '⚠️';
+      case 'weapon_detection': return '🔫';
+      case 'fire_detection': return '🔥';
+      case 'motion_detection': return '🏃';
+      default: return '📷';
+    }
+  };
+
   const statCards = [
     {
       title: 'Total Cameras',
@@ -162,6 +290,24 @@ export default function Dashboard() {
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <span className="text-sm font-medium">System Online</span>
         </div>
+        {/* Debug Test Button */}
+        <button
+          onClick={() => {
+            console.log('Test button clicked');
+            const testEvent: EventNotification = {
+              id: `test-${Date.now()}`,
+              event_type: 'person_detection',
+              confidence: 95,
+              camera_id: 'test-camera-123',
+              created_at: new Date().toISOString()
+            };
+            playBeep();
+            setNotifications(prev => [testEvent, ...prev].slice(0, 5));
+          }}
+          className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700"
+        >
+          Test Notification
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
@@ -185,15 +331,29 @@ export default function Dashboard() {
       </div>
 
       {stats.unacknowledgedEvents > 0 && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="text-red-600 dark:text-red-400" size={24} />
-            <div>
-              <h3 className="text-lg font-semibold text-red-900 dark:text-red-300">Unacknowledged Events</h3>
-              <p className="text-red-700 dark:text-red-400">
-                You have {stats.unacknowledgedEvents} unreviewed event{stats.unacknowledgedEvents !== 1 ? 's' : ''} requiring attention.
-              </p>
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 border-2 border-red-300 dark:border-red-700 rounded-xl p-6 shadow-lg">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-red-600 rounded-full">
+                <AlertCircle className="text-white" size={28} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-red-900 dark:text-red-100 mb-1">Unacknowledged Events</h3>
+                <p className="text-red-700 dark:text-red-300 text-sm">
+                  You have <span className="font-black text-2xl mx-1">{stats.unacknowledgedEvents}</span> unreviewed event{stats.unacknowledgedEvents !== 1 ? 's' : ''} requiring immediate attention.
+                </p>
+                <p className="text-red-600 dark:text-red-400 text-xs mt-2">
+                  ⚡ These events need to be reviewed and acknowledged
+                </p>
+              </div>
             </div>
+            <button
+              onClick={() => onNavigate?.('events')}
+              className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 whitespace-nowrap cursor-pointer"
+            >
+              View Events
+              <ArrowRight size={18} />
+            </button>
           </div>
         </div>
       )}
@@ -252,6 +412,72 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Event Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-3 max-w-sm pointer-events-none">
+        {notifications.map((notification, index) => (
+          <div
+            key={notification.id}
+            className="pointer-events-auto bg-white dark:bg-slate-800 rounded-xl shadow-2xl border-2 border-red-500 overflow-hidden animate-in slide-in-from-right duration-300"
+            style={{ animationDelay: `${index * 100}ms` }}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-600 to-red-700 p-3 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bell size={18} className="animate-pulse" />
+                <span className="font-bold text-sm">New Detection!</span>
+              </div>
+              <button
+                onClick={() => dismissNotification(notification.id)}
+                className="hover:bg-white/20 rounded-full p-1 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-4xl">{getEventTypeEmoji(notification.event_type)}</div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-slate-900 dark:text-white text-lg">
+                    {notification.event_type.replace('_', ' ').toUpperCase()}
+                  </h4>
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mt-1 space-y-1">
+                    <p>Confidence: <span className="font-semibold text-red-600">{notification.confidence}%</span></p>
+                    <p>Camera ID: {notification.camera_id.substring(0, 8)}...</p>
+                    <p className="text-slate-500">{new Date(notification.created_at).toLocaleTimeString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              {notification.snapshot_url && (
+                <img
+                  src={notification.snapshot_url}
+                  alt="Event snapshot"
+                  className="w-full h-24 object-cover rounded-lg mt-3 border border-slate-200 dark:border-slate-700"
+                />
+              )}
+            </div>
+
+            {/* Progress bar for auto-dismiss */}
+            <div className="relative h-1 bg-slate-200 dark:bg-slate-700 overflow-hidden">
+              <div
+                className="absolute inset-0 bg-red-600 animate-shrink-width"
+                style={{ animation: 'shrinkWidth 8s linear forwards' }}
+                onAnimationEnd={() => dismissNotification(notification.id)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes shrinkWidth {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+      `}</style>
     </div>
   );
 }

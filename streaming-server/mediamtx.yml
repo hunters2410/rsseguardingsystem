@@ -148,7 +148,7 @@ authJWTInHTTPQuery: true
 # Global settings -> Control API
 
 # Enable controlling the server through the Control API.
-api: no
+api: yes
 # Address of the Control API listener.
 apiAddress: :9997
 # Enable TLS/HTTPS on the Control API server.
@@ -770,5 +770,14 @@ paths:
   # 4. In the Web App, use URL: http://localhost:8888/cam1
   ###############################################
   cam1:
-    source: rtsp://admin:password@192.168.1.50:554/stream1
+    source: rtsp://admin:@Bc24680@192.168.1.120:37777/stream1
+
+  ###############################################
+  # USER DAHUA CAMERA
+  # Replace credentials and IP below with your actual details.
+  # Then in the App, use URL: http://localhost:8888/dahua
+  ###############################################
+  dahua:
+    source: rtsp://admin:@Bc24680@192.168.1.120:37777/cam/realmonitor?channel=1&subtype=0
+
 

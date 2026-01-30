@@ -11,119 +11,104 @@ The Real Star Security E-Guarding System is a comprehensive AI-powered surveilla
 
 ---
 
-## 2. Prerequisites
+## 2. Recent Updates (Version 2.0 - Security Optimized)
+
+### 2.1. AI Detection Optimization
+-   **Security Class Filtering**: The engine is now hard-filtered to only alert on security-relevant classes: `person`, `car`, `motorcycle`, `bus`, `truck`, `dog`, and `bicycle`. This eliminates false positives from static objects like benches or chairs.
+-   **Intelligent Movement-Based Triggering**: To prevent duplicate alerts on static occupants, the system now tracks object movement. An alert is only triggered if an object moves significantly (total displacement > 15px or per-frame shift > 8px).
+-   **Enhanced Sensitivity**: Detection confidence threshold tuned to `0.28` (Variable) to ensure reliable "person" detection even in challenging lighting conditions (e.g., Camera 9 optimization).
+-   **Reduced Latency**: Optimized inference loop removing redundant model calls and overhead, ensuring smoother real-time analysis.
+
+### 2.2. Frontend Enhancements
+-   **Real-time Popup Alerts**: Implemented high-priority toast notifications in the **Live Monitoring** view. When a threat is detected, a popup immediately appears in the top-right corner with the camera name and event type.
+-   **Stale-State Prevention**: Implemented `useRef` synchronization for camera lists to ensure real-time alerts always display the correct camera names regardless of component re-renders.
+-   **Standardized Grid View**: Re-implemented responsive monitoring grid with 1, 2, and 4-column options for flexible surveillance layouts.
+
+### 2.3. Infrastructure & Reliability
+-   **Device ID Synchronization**: Hard-coded machine identity (`device_id.txt`) synchronization to ensure assignments from the cloud dashboard accurately map to the local edge processing server.
+-   **Storage Integration**: Automated JPEG snapshot uploads to Supabase Storage (`event-snapshots` bucket) with public URL generation for immediate visual proof in emails and the dashboard.
+-   **Automated Assignments**: Created `fix_assignments.py` utility to instantly link all registered cameras to the primary local AI server, reducing manual configuration time.
+
+---
+
+## 3. Prerequisites
 Before running the system, ensure the following are installed and configured:
 
-1.  **Node.js**: Version 16+ (for frontend and streaming scripts).
-2.  **Python**: Version 3.8+ (for the AI server).
-3.  **Supabase Account**: A project set up with the required tables (`cameras`, `ai_models`, `security_events`, `system_settings`, etc.).
+1.  **Node.js**: Version 18+ (for frontend and streaming scripts).
+2.  **Python**: Version 3.10+ (for the AI server).
+3.  **Supabase Account**: A project set up with the required tables (`cameras`, `ai_models`, `camera_models`, `events`, `system_settings`, etc.).
 4.  **MediaMTX**: The strictly required executable for RTSP streaming (should be located in `streaming-server/mediamtx.exe`).
 
 ---
 
-## 3. Installation
+## 4. Installation & Setup
 
-### 3.1. Clone the Repository
+### 4.1. Clone and Install
 ```bash
 git clone <repository_url>
 cd realstarsecurityeguarding
-```
-
-### 3.2. Install Frontend Dependencies
-```bash
 npm install
 ```
 
-### 3.3. Install AI Server Dependencies
-Navigate to the `ai-server` directory and install the Python requirements:
+### 4.2. AI Server Prerequisites
 ```bash
 cd ai-server
 pip install -r requirements.txt
+# strictly required: ultralytics, opencv-python, supabase, torch
 cd ..
 ```
-*Note: Ensure you have `ultralytics`, `opencv-python`, `supabase`, `python-dotenv`, etc., installed.*
 
-### 3.4. Environment Configuration
-Ensure you have a `.env` file in the root directory with your Supabase credentials:
+### 4.3. Environment Configuration
+Ensure `.env` in root contains:
 ```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key (For AI Server)
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_SERVICE_ROLE_KEY=... # Vital for AI Server
 ```
 
 ---
 
-## 4. Running the System
-To run the full system, you need to start three separate processes. It is recommended to run them in separate terminal windows.
+## 5. Running the System
 
 ### Step 1: Start the Streaming Server
-This starts the MediaMTX server to handle video feeds.
 ```bash
 npm run stream
 ```
-*Output: You should see the MediaMTX server starting and listening on RTSP/HLS ports.*
 
 ### Step 2: Start the AI Surveillance Engine
-This starts the Python script that processes video feeds and detects objects.
 ```bash
 npm run ai-server
 ```
-*Output: You will see "AI Surveillance Engine Starting..." and logs indicating it is connecting to Supabase and loading models.*
+*Note: This process now logs detailed heartbeats to `ai_log.txt` for background debugging.*
 
 ### Step 3: Start the Web Dashboard
-This launches the React frontend.
 ```bash
 npm run dev
 ```
-*Output: Vite will start the development server, usually at http://localhost:5173.*
 
 ---
 
-## 5. System Features & Usage
+## 6. Technical Details for Developers
 
-### 5.1. Dashboard
-*   **Overview**: View system status, active cameras, and recent alerts.
-*   **Quick Stats**: Monitoring uptime and active threats.
+### Object Tracking Logic (`ai-server/main.py`)
+-   Objects are identified using a composite key: `label + bucketed position`.
+-   `seen_count`: Minimum of 2 consecutive frames required before triggering an alert to filter out flickering ghosts.
+-   `alerted` flag: Prevents spamming the database; reset only after the object leaves the frame for >10 seconds.
 
-### 5.2. Camera Management
-*   **Add Cameras**: Configure RSTP URLs for your IP cameras.
-*   **Status**: Check if cameras are online or offline.
-*   **View Feed**: Watch the live feed from individual cameras.
-
-### 5.3. AI Models
-*   **Model Library**: Manage different AI models (e.g., Weapon Detection, Fire Detection).
-*   **Assignment**: Assign specific models to specific cameras.
-*   **Confidence Thresholds**: Adjust how sensitive the AI should be.
-
-### 5.4. Live Monitoring
-*   **Multi-View**: Watch multiple camera feeds simultaneously.
-*   **Real-time Detections**: See bounding boxes around detected objects in real-time.
-
-### 5.5. Events & Alerts
-*   **Event Log**: A searchable history of all detected security events.
-*   **Evidence**: View snapshots/images captured during an event.
-*   **Notification Settings**: Configure Email (SMTP) and SMS (Twilio) alerts in the **Settings** tab.
-
-### 5.6. Settings
-*   **General**: Company name and data retention policies.
-*   **Email Integration**: Configure SMTP settings for email alerts. **test** your configuration with the "Sen Test Email" button.
-*   **Security**: Update admin passwords.
+### Event Notification Pipeline
+1.  **AI Detection**: YOLOv8 processes the frame.
+2.  **Logic Filter**: Checks class and movement.
+3.  **Persistence**: Record inserted into `events` table via Supabase client.
+4.  **Realtime Broadcast**: Supabase `postgres_changes` pushes detection to UI.
+5.  **UI Feedback**: `LiveMonitoring.tsx` catches the event and triggers `toast.error()`.
+6.  **External Alert**: Background thread initiates SMTP email relay and SMS (if configured).
 
 ---
 
-## 6. Troubleshooting
+## 7. Maintenance & CLI Tools
+-   `fix_assignments.py`: Syncs local server ID with database models.
+-   `check_db.py`: Quick check of the last 5 security events in the cloud.
+-   `ai_log.txt`: Primary log file for debugging AI detection flows.
 
-### Email Testing Fails
-*   **Check Console**: Look at the terminal running `npm run ai-server` for detailed error logs.
-*   **SMTP Settings**: Verify your Host, Port (587 or 465), Username, and Password.
-*   **App Passwords**: If using Gmail, you must use an "App Password", not your login password.
-
-### Video Feed Not Loading
-*   **Check RTSP URL**: Ensure the camera URL is correct and accessible from the server's network.
-*   **MediaMTX**: Ensure `npm run stream` is running and `mediamtx.exe` is present.
-*   **Browser Support**: Some browsers block mixed content if not using HTTPS.
-
-### AI Not Detecting
-*   **Model Assignment**: Ensure a model is assigned to the camera in the "AI Models" tab.
-*   **Confidence**: Lower the confidence threshold if it's missing obvious objects.
-*   **Performance**: Ensure the server has enough CPU/GPU power to process the feeds.
+---
+*Last Updated: January 30, 2026 - Real Star Security Agent*

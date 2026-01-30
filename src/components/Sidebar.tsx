@@ -1,4 +1,4 @@
-import { Camera, Server, Brain, Bell, Monitor, Activity, X, ChevronLeft, ChevronRight, Database, Settings } from 'lucide-react';
+import { Camera, Server, Brain, Bell, Monitor, Activity, X, ChevronLeft, ChevronRight, Database, Settings, Book } from 'lucide-react';
 
 type SidebarProps = {
   activeView: string;
@@ -18,6 +18,7 @@ export default function Sidebar({ activeView, onViewChange, isOpen, onClose, isM
     { id: 'training', label: 'Training & Datasets', icon: Database },
     { id: 'events', label: 'Events', icon: Bell },
     { id: 'monitoring', label: 'Live Monitor', icon: Activity },
+    { id: 'manual', label: 'Setup Guide', icon: Book },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
