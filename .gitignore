@@ -49,6 +49,11 @@ wheels/
 # Logs
 *.log
 debug_filter.log
+ai-server/ai_log.txt
+
+# Temporary/Debug Scripts
+debug_*.py
+check_*.py
 
 # Editor/OS
 .vscode/
