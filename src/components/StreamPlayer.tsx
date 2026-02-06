@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { AlertCircle, Loader } from 'lucide-react';
 
+interface Detection {
+  id: string;
+  label: string;
+  confidence: number;
+  box: number[]; // [x, y, w, h] in normalized coordinates (0-1) or absolute?
+  timestamp: number;
+}
+
 interface StreamPlayerProps {
   url: string;
   isRecording?: boolean;
@@ -9,6 +17,7 @@ interface StreamPlayerProps {
   className?: string;
   autoPlay?: boolean;
   muted?: boolean;
+  detections?: Detection[];
 }
 
 export default function StreamPlayer({
@@ -17,9 +26,11 @@ export default function StreamPlayer({
   cameraName = "Camera",
   className = "",
   autoPlay = true,
-  muted = true
+  muted = true,
+  detections = []
 }: StreamPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const hlsRef = useRef<Hls | null>(null);
@@ -28,6 +39,82 @@ export default function StreamPlayer({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
+
+  // Drawing detections
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+
+    const draw = () => {
+      // Set canvas size to match video display size
+      if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
+        canvas.width = video.clientWidth;
+        canvas.height = video.clientHeight;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const now = Date.now();
+      detections.forEach((det) => {
+        // Only show detections from the last 5 seconds
+        const age = now - det.timestamp;
+        if (age > 5000) return;
+
+        const opacity = Math.max(0, 1 - age / 5000);
+        const [x, y, w, h] = det.box;
+
+        // YOLO boxes are often [center_x, center_y, width, height] but our ai-server uses [x1, y1, x2, y2] translated via box.xywh
+        // Let's assume [center_x, center_y, width, height] or [x, y, w, h] normalized?
+        // ai-server uses: "metadata": {"box": box.xywh.tolist()}
+        // box.xywh is [x_center, y_center, width, height] in pixels? 
+        // No, in YOLO it's usually absolute pixels unless specified.
+        // But the AI server runs on a frame that might be 640x480 or something else.
+
+        // BETTER: Assume normalized coordinates (0-1) from the AI server if possible.
+        // In current main.py: box.xywh.tolist() -> absolute pixels of the frame.
+        // We need to know the original frame size to scale them.
+
+        // HACK: For now, if values are > 1, assume pixels and try to fit. 
+        // But if we don't know frame size, it's hard. 
+        // Let's assume the AI model ran on 640x640 (YOLO default) if we have to guess.
+
+        // Actually, let's just draw them. If they are pixels, we need scale factor.
+        // Let's assume they are normalized for now, if not we will fix main.py.
+
+        const scaleX = canvas.width;
+        const scaleY = canvas.height;
+
+        ctx.strokeStyle = `rgba(239, 68, 68, ${opacity})`; // red-500
+        ctx.lineWidth = 2;
+        ctx.strokeRect(
+          (x - w / 2) * scaleX,
+          (y - h / 2) * scaleY,
+          w * scaleX,
+          h * scaleY
+        );
+
+        ctx.fillStyle = `rgba(239, 68, 68, ${opacity})`;
+        ctx.font = '12px Inter, sans-serif';
+        const label = `${det.label} ${Math.round(det.confidence)}%`;
+        const textWidth = ctx.measureText(label).width;
+        ctx.fillRect((x - w / 2) * scaleX, (y - h / 2) * scaleY - 20, textWidth + 10, 20);
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+        ctx.fillText(label, (x - w / 2) * scaleX + 5, (y - h / 2) * scaleY - 5);
+      });
+
+      animationFrameId = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [detections]);
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -137,9 +224,16 @@ export default function StreamPlayer({
         return;
       }
 
-      const recorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp8'
-      });
+      // Check supported MIME types
+      const options = { mimeType: 'video/webm;codecs=vp9' };
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+          options.mimeType = 'video/webm';
+        }
+      }
+
+      const recorder = new MediaRecorder(stream, options);
 
       recorderRef.current = recorder;
       chunksRef.current = [];
@@ -156,7 +250,9 @@ export default function StreamPlayer({
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
         const downloadUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const timestamp = new Date().toLocaleString().replace(/[\/, :]/g, '-');
+        // Format timestamp safely for filename
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
 
         a.href = downloadUrl;
         a.download = `${cameraName.replace(/\s+/g, '_')}_${timestamp}.webm`;
@@ -167,9 +263,13 @@ export default function StreamPlayer({
         setIsCapturing(false);
       };
 
+      recorder.onerror = (e) => {
+        console.error("Recorder Error:", e);
+      };
+
       recorder.start(1000); // Collect data every second
       setIsCapturing(true);
-      console.log(`Started recording ${cameraName}`);
+      console.log(`Started recording ${cameraName} with ${options.mimeType}`);
     } catch (err) {
       console.error("Recording failed to start:", err);
     }
@@ -205,6 +305,11 @@ export default function StreamPlayer({
         muted={muted}
         crossOrigin="anonymous"
         controls={false}
+      />
+
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 pointer-events-none z-10"
       />
 
       {/* Loading Overlay */}

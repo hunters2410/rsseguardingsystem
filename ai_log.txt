@@ -1,0 +1,128 @@
+[2026-01-30 18:59:31.191846] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 18:59:31.502611] Found 2 assignments
+[2026-01-30 18:59:42.128093] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 18:59:42.413934] Found 2 assignments
+[2026-01-30 18:59:53.077148] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 18:59:53.424931] Found 2 assignments
+[2026-01-30 19:00:04.155827] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:00:04.591474] Found 2 assignments
+[2026-01-30 19:00:15.251576] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:00:15.608512] Found 2 assignments
+[2026-01-30 19:00:26.263981] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:00:26.611814] Found 2 assignments
+[2026-01-30 19:00:37.221142] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:00:37.575684] Found 2 assignments
+[2026-01-30 19:00:48.211695] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:00:48.498006] Found 2 assignments
+[2026-01-30 19:00:59.121019] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:00:59.444157] Found 2 assignments
+[2026-01-30 19:01:10.062657] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:01:10.431575] Found 2 assignments
+[2026-01-30 19:01:21.105682] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:01:21.421328] Found 2 assignments
+[2026-01-30 19:01:32.098633] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:01:32.681954] Found 2 assignments
+[2026-01-30 19:01:43.269678] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:01:43.580404] Found 2 assignments
+[2026-01-30 19:01:54.202569] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:01:54.493513] Found 2 assignments
+[2026-01-30 19:02:05.065424] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:02:05.362611] Found 2 assignments
+[2026-01-30 19:02:15.965479] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:02:16.266378] Found 2 assignments
+[2026-01-30 19:02:26.894023] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:02:27.253148] Found 2 assignments
+[2026-01-30 19:02:37.914844] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:02:38.212876] Found 2 assignments
+[2026-01-30 19:02:48.790491] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:02:49.085961] Found 2 assignments
+[2026-01-30 19:02:59.739913] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:03:00.096406] Found 2 assignments
+[2026-01-30 19:03:10.726955] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:03:11.046632] Found 2 assignments
+[2026-01-30 19:03:21.675209] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:03:22.016453] Found 2 assignments
+[2026-01-30 19:03:32.637365] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:03:32.948770] Found 2 assignments
+[2026-01-30 19:03:43.626839] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:03:43.947317] Found 2 assignments
+[2026-01-30 19:03:54.557786] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:03:54.891240] Found 2 assignments
+[2026-01-30 19:04:05.547691] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:04:05.846743] Found 2 assignments
+[2026-01-30 19:04:16.442287] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:04:16.777555] Found 2 assignments
+[2026-01-30 19:04:27.408883] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:04:27.729315] Found 2 assignments
+[2026-01-30 19:04:38.391940] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:04:38.732768] Found 2 assignments
+[2026-01-30 19:04:49.370464] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:04:49.685515] Found 2 assignments
+[2026-01-30 19:05:00.398017] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:05:00.740863] Found 2 assignments
+[2026-01-30 19:05:11.701735] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:05:12.014228] Found 2 assignments
+[2026-01-30 19:05:22.641052] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:05:22.939311] Found 2 assignments
+[2026-01-30 19:05:33.857620] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:05:34.178202] Found 2 assignments
+[2026-01-30 19:05:44.853100] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:05:45.246395] Found 2 assignments
+[2026-01-30 19:05:55.968518] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:05:56.339567] Found 2 assignments
+[2026-01-30 19:06:07.094475] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:06:07.444294] Found 2 assignments
+[2026-01-30 19:06:18.042284] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:06:18.345316] Found 2 assignments
+[2026-01-30 19:06:28.971611] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:06:29.266056] Found 2 assignments
+[2026-01-30 19:06:39.885471] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:06:40.358328] Found 2 assignments
+[2026-01-30 19:06:51.007222] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:06:51.319678] Found 2 assignments
+[2026-01-30 19:07:01.954068] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:07:02.311378] Found 2 assignments
+[2026-01-30 19:07:12.989906] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:07:13.303709] Found 2 assignments
+[2026-01-30 19:07:23.951965] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:07:24.271989] Found 2 assignments
+[2026-01-30 19:07:34.939030] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:07:35.289726] Found 2 assignments
+[2026-01-30 19:07:45.871409] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:07:46.172238] Found 2 assignments
+[2026-01-30 19:07:56.905350] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:07:57.261536] Found 2 assignments
+[2026-01-30 19:08:07.913073] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:08:08.219863] Found 2 assignments
+[2026-01-30 19:08:18.838951] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:08:19.148646] Found 2 assignments
+[2026-01-30 19:08:29.816080] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:08:30.136913] Found 2 assignments
+[2026-01-30 19:08:40.799314] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:08:41.139352] Found 2 assignments
+[2026-01-30 19:08:51.747930] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:08:52.065127] Found 2 assignments
+[2026-01-30 19:09:02.713422] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:09:03.014939] Found 2 assignments
+[2026-01-30 19:09:13.652263] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:09:13.968316] Found 2 assignments
+[2026-01-30 19:09:24.602267] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:09:24.907917] Found 2 assignments
+[2026-01-30 19:09:37.300627] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:09:40.012039] Found 2 assignments
+[2026-01-30 19:09:52.786403] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:09:53.096357] Found 2 assignments
+[2026-01-30 19:10:03.749557] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:10:04.042807] Found 2 assignments
+[2026-01-30 19:10:14.664955] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:10:14.951631] Found 2 assignments
+[2026-01-30 19:10:25.731013] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:10:26.041632] Found 2 assignments
+[2026-01-30 19:10:36.667591] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:10:36.996951] Found 2 assignments
+[2026-01-30 19:10:47.624563] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:10:48.019932] Found 2 assignments
+[2026-01-30 19:10:58.736706] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:10:59.144167] Found 2 assignments
+[2026-01-30 19:11:09.925199] Found 1 models for sid a96dd4c1-8eee-4d0e-84e1-18966f928738
+[2026-01-30 19:11:10.308846] Found 2 assignments

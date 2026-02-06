@@ -65,6 +65,26 @@ else:
     with open(DEVICE_ID_FILE, 'w') as f:
         f.write(SERVER_UUID)
 
+# Geometry Helper Functions
+def ccw(A, B, C):
+    return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+
+def intersect(A, B, C, D):
+    """Return true if line segments AB and CD intersect"""
+    return ccw(A, C, D) != ccw(B, C, D) and ccw(A, B, C) != ccw(A, B, D)
+
+def check_zone_crossing(prev_pos, curr_pos, zone_line):
+    """
+    prev_pos: (x1, y1)
+    curr_pos: (x2, y2)
+    zone_line: [(zx1, zy1), (zx2, zy2)]
+    """
+    A = prev_pos
+    B = curr_pos
+    C = tuple(zone_line[0])
+    D = tuple(zone_line[1])
+    return intersect(A, B, C, D)
+
 def register_server():
     """Registers this local computer as an AI Server in the database"""
     hostname = socket.gethostname()
@@ -135,16 +155,37 @@ def send_email_alert(settings, event_data):
     if not settings.get('alert_email_enabled'): return
     
     try:
+        # Fetch notification list
+        recipients = []
+        try:
+            resp = supabase.table('notification_emails').select('email').execute()
+            if resp.data:
+                recipients = [r['email'] for r in resp.data]
+        except Exception as ex:
+             print(f"Error fetching email list: {ex}")
+
+        # Add admin email
+        admin = settings.get('admin_email')
+        if admin:
+             recipients.append(admin)
+        
+        # Deduplicate and filter empty
+        unique_recipients = list(set([r for r in recipients if r]))
+
+        if not unique_recipients:
+             print("No email recipients configured.")
+             return
+
         msg = MIMEText(f"Target Detected: {event_data['event_type']} ({event_data['confidence']:.1f}%)\nCamera: {event_data['camera_name']}\nTime: {datetime.now()}\n\nView Snapshot: {event_data['snapshot_url']}")
         msg['Subject'] = f" Security Alert: {event_data['event_type']} Detected"
         msg['From'] = settings.get('smtp_from')
-        msg['To'] = settings.get('admin_email')
+        msg['To'] = ", ".join(unique_recipients)
 
         with smtplib.SMTP(settings.get('smtp_host'), settings.get('smtp_port')) as server:
             server.starttls()
             server.login(settings.get('smtp_user'), settings.get('smtp_pass'))
             server.send_message(msg)
-        print("Email alert sent.")
+        print(f"Email alert sent to {len(unique_recipients)} recipients.")
     except Exception as e:
         print(f"Failed to send email: {e}")
 
@@ -179,6 +220,118 @@ def get_system_settings():
     except:
         return {}
     return {}
+
+
+def load_zones():
+    """Load zones from Supabase camera_zones table"""
+    try:
+        # Fetch all zones
+        response = supabase.table('camera_zones').select('*').execute()
+        zones_data = response.data
+        
+        # Group by camera_id
+        zones_map = {}
+        for zone in zones_data:
+            cid = zone['camera_id']
+            if cid not in zones_map:
+                zones_map[cid] = []
+            
+            # Ensure points are list of lists
+            # Supabase returns jsonb as python objects (lists/dicts)
+            zones_map[cid].append({
+                'type': zone['type'],
+                'points': zone['points'],
+                'label': zone.get('label', 'Zone'),
+                'alert_enabled': zone.get('alert_enabled', True)
+            })
+            
+        return zones_map
+    except Exception as e:
+        print(f"Error loading zones from DB: {e}")
+        # Fallback to local file if DB fails? 
+        return {}
+
+def load_alert_rules():
+    """Load alert rules from Supabase alert_rules table"""
+    try:
+        response = supabase.table('alert_rules').select('*').execute()
+        rules_data = response.data
+        
+        # Organize by camera_id
+        rules_map = {}
+        global_rule = None
+        
+        for rule in rules_data:
+            if rule['camera_id'] is None:
+                global_rule = rule
+            else:
+                rules_map[rule['camera_id']] = rule
+        
+        return {
+            'global': global_rule,
+            'cameras': rules_map
+        }
+    except Exception as e:
+        print(f"Error loading alert rules from DB: {e}")
+        # Default: trigger all objects (backward compatible)
+        return {
+            'global': None,
+            'cameras': {}
+        }
+
+def should_trigger_alert(camera_id, object_label, alert_rules):
+    """
+    Determine if detected object should trigger an alert based on configured rules
+    
+    Args:
+        camera_id: Camera UUID
+        object_label: Detected object type (e.g., 'person', 'car')
+        alert_rules: Rules dictionary from load_alert_rules()
+    
+    Returns:
+        bool: True if should trigger, False otherwise
+    """
+    # Get camera-specific rule or fall back to global
+    rule = alert_rules['cameras'].get(camera_id) or alert_rules['global']
+    
+    if not rule:
+        # No rules configured - default to trigger all (backward compatible)
+        # print(f"[Filter Debug] Cam: {camera_id[:5]} | Obj: {object_label} | No Rule -> Result: True (Default)")
+        return True
+    
+    mode = rule.get('mode', 'whitelist')
+    
+    # Normalize to lowercase for safe comparison
+    label_lower = object_label.lower()
+    enabled_objects = [str(o).lower() for o in rule.get('enabled_objects', [])]
+    disabled_objects = [str(o).lower() for o in rule.get('disabled_objects', [])]
+    
+    if mode == 'whitelist':
+        # Only trigger if object is in enabled list
+        result = label_lower in enabled_objects
+        # Debug logging for troubleshooting
+        if not result and hash(label_lower) % 100 == 0:
+             print(f"[Filter] Skipping '{object_label}' (not in whitelist: {enabled_objects})")
+        return result
+    else:  # blacklist
+        # Trigger unless object is in disabled list
+        result = label_lower not in disabled_objects
+        
+        # ALWAYS LOG BLACKLIST CHECKS FOR NOW
+        status = "ALLOWED" if result else "BLOCKED"
+        log_msg = f"{datetime.now()} | Cam: {camera_id[:5]} | Obj: {object_label} | Mode: {mode} | Blacklist: {disabled_objects} -> {status}\n"
+        try:
+            with open("debug_filter.log", "a") as f:
+                f.write(log_msg)
+        except:
+            pass
+        
+        print(f"[Filter Debug] {log_msg.strip()}")
+        
+        if not result:
+            print(f"[Filter] Skipping '{object_label}' (in blacklist: {disabled_objects})")
+        return result
+
 
 def process_stream(camera, model, stop_event):
     """Main processing loop for a single camera + model pair"""
@@ -243,11 +396,17 @@ def process_stream(camera, model, stop_event):
         tracker = object_trackers[camera['id']]
         
         settings = get_system_settings()
+        zones_map = load_zones()
+        alert_rules = load_alert_rules()  # Load alert rules
+        camera_zones = zones_map.get(camera['id'], [])
         last_settings_refresh = time.time()
 
         while not stop_event.is_set():
-            if time.time() - last_settings_refresh > 60:
+            if time.time() - last_settings_refresh > 5:
                 settings = get_system_settings()
+                zones_map = load_zones()
+                alert_rules = load_alert_rules()  # Refresh alert rules
+                camera_zones = zones_map.get(camera['id'], [])
                 last_settings_refresh = time.time()
 
             ret, frame = cap.read()
@@ -272,7 +431,34 @@ def process_stream(camera, model, stop_event):
             try:
                 results = ai_model(frame, verbose=False)
                 conf_threshold = 0.28
-                SECURITY_CLASSES = ['person', 'bicycle', 'car', 'motorcycle', 'dog', 'bus', 'truck']
+                
+                # Filter by Model Type
+                model_type = model.get('model_type', 'other')
+                
+                # Mapping of model types to YOLO classes
+                TYPE_MAPPING = {
+                    'person_detection': ['person', 'bicycle', 'car', 'motorcycle', 'bus', 'truck'],
+                    'vehicle_detection': ['bicycle', 'car', 'motorcycle', 'bus', 'truck'],
+                    'weapon_detection': ['weapon', 'gun', 'pistol', 'rifle', 'firearm', 'knife', 'handgun'],
+                    'animal_detection': ['bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe'],
+                    'face_recognition': ['person'],
+                    'crowd_detection': ['person'],
+                    'intrusion_detection': ['person', 'bicycle', 'car', 'motorcycle', 'dog', 'bus', 'truck'],
+                    'fire_detection': ['fire', 'smoke'],
+                    'ppe_detection': ['helmet', 'vest', 'glove', 'glasses', 'mask', 'no-helmet', 'no-vest', 'no-glove', 'no-glasses', 'no-mask', 'NO-Hardhat', 'NO-Mask', 'NO-Safety Vest', 'Hardhat', 'Mask', 'Safety Vest']
+                }
+                
+                # Get specific classes for this model or fallback to all security classes
+                allowed_classes = TYPE_MAPPING.get(model_type)
+                
+                if not allowed_classes:
+                    # Default/Other: Allow everything in the security list
+                    allowed_classes = [
+                        'person', 'bicycle', 'car', 'motorcycle', 'dog', 'bus', 'truck',
+                        'weapon', 'gun', 'pistol', 'rifle', 'firearm', 'knife', 'handgun',
+                        'helmet', 'vest', 'glove', 'glasses', 'mask', 'no-helmet', 'no-vest', 'no-glove', 'no-glasses', 'no-mask',
+                        'NO-Hardhat', 'NO-Mask', 'NO-Safety Vest', 'Hardhat', 'Mask', 'Safety Vest'
+                    ]
                 
                 detected = False
                 for r in results:
@@ -281,9 +467,29 @@ def process_stream(camera, model, stop_event):
                         cls_idx = int(box.cls[0])
                         label = ai_model.names[cls_idx]
                         
-                        # Only security-relevant detections
-                        if label not in SECURITY_CLASSES or conf < conf_threshold:
+                        # Only trigger for allowed classes
+                        if label not in allowed_classes:
                             continue
+
+                        # Strict confidence threshold for weapons to reduce false positives
+                        current_threshold = conf_threshold
+                        if label in ['weapon', 'gun', 'pistol', 'rifle', 'firearm', 'knife', 'handgun']:
+                             current_threshold = 0.55 # Significantly higher for weapons
+
+                        if conf < current_threshold:
+                            continue
+
+                        # Check alert rules - skip if object not in whitelist
+                        # MOVED TO LATE FILTERING (Below)
+                        # if not should_trigger_alert(camera['id'], label, alert_rules):
+                        #    continue
+                        
+                        original_label = label # Preserve for filtering check
+
+
+                        # DEBUG: Log every detection that passes threshold
+                        if frame_count % (skip_frames * 10) == 0:
+                            print(f"[{camera['name']}] DETECTED: {label} ({conf:.2f})")
 
                         # Tracking logic
                         xyxy = box.xyxy[0].tolist()
@@ -296,6 +502,24 @@ def process_stream(camera, model, stop_event):
                         
                         if obj_id in tracker and isinstance(tracker[obj_id], dict):
                             last_pos = tracker[obj_id]['last_position']
+                            
+                            crossed_zone = None
+                            # Zone Crossing Detection
+                            for zone in camera_zones:
+                                if zone.get('type') == 'line' and len(zone.get('points', [])) >= 2:
+                                    h, w = frame.shape[:2]
+                                    zpts = zone['points']
+                                    start_pt = (zpts[0][0] * w, zpts[0][1] * h)
+                                    end_pt = (zpts[1][0] * w, zpts[1][1] * h)
+                                    
+                                    if check_zone_crossing(last_pos, current_position, [start_pt, end_pt]):
+                                        print(f"[{camera['name']}] ZONE CROSSING: {label}")
+                                        should_trigger = True
+                                        label = f"{label}_crossing" # Differentiate event
+                                        tracker[obj_id]['alerted'] = False 
+                                        tracker[obj_id]['seen_count'] = 999
+                                        crossed_zone = (start_pt, end_pt) # Record for highlighting
+                                        
                             movement = ((center_x - last_pos[0])**2 + (center_y - last_pos[1])**2)**0.5
                             tracker[obj_id].update({
                                 'total_movement': tracker[obj_id]['total_movement'] + movement, 
@@ -303,9 +527,8 @@ def process_stream(camera, model, stop_event):
                                 'seen_count': tracker[obj_id]['seen_count'] + 1,
                                 'last_position': current_position
                             })
-                            # Trigger if shifted significantly
-                            if tracker[obj_id]['total_movement'] > 15 or movement > 8:
-                                should_trigger = True
+                            # Trigger immediately if object is persistent (no movement required for whitelisted objects)
+                            should_trigger = True
                         else:
                             tracker[obj_id] = {
                                 'last_position': current_position, 
@@ -317,8 +540,58 @@ def process_stream(camera, model, stop_event):
 
                         # Trigger processing
                         if should_trigger and not tracker[obj_id].get('alerted') and tracker[obj_id]['seen_count'] >= 2:
+                            
+                            # --- LATE FILTERING ---
+                            # Logic:
+                            # 1. If it IS a zone crossing ("_crossing" in label), ALLOW it (Bypass blacklist).
+                            # 2. If it IS NOT a crossing, CHECK blacklist/whitelist rules.
+                            
+                            is_zone_crossing = "_crossing" in label
+                            if is_zone_crossing:
+                                print(f"[{camera['name']}] Zone Crossing Event (Allowed despite filter): {label}")
+                            else:
+                                # Regular detection
+                                
+                                # CHECK 1: GLOBAL STRICT MODE (Boundary Alerts Only)
+                                if settings.get('boundary_alerts_only', False):
+                                    print(f"[{camera['name']}] Filtered Event: {label} (BLOCKED - Strict Zone Mode Active)")
+                                    continue
+                                
+                                # CHECK 2: Enforce Blacklist/Whitelist Rules
+                                if not should_trigger_alert(camera['id'], original_label, alert_rules):
+                                     print(f"[{camera['name']}] Filtered Event: {label} (BLOCKED - Rules)")
+                                     continue 
+
+                            if "_crossing" in label:
+                                print(f"[{camera['name']}] Zone Crossing Event (Allowed): {label}")
+                            
                             print(f"[{camera['name']}] SECURITY ALERT: {label.upper()} ({conf:.2f})")
-                            ret, buffer = cv2.imencode('.jpg', frame)
+                            
+                            # --- HIGHLIGHTING LOGIC ---
+                            # Create a copy to draw on for the snapshot
+                            snapshot_frame = frame.copy()
+                            
+                            # Draw Bounding Box (Red for Alert)
+                            x1, y1, x2, y2 = map(int, xyxy)
+                            cv2.rectangle(snapshot_frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                            
+                            # Draw Warning Header on Image
+                            header_text = "SECURITY BREACH" if is_zone_crossing else "DETECTION"
+                            cv2.rectangle(snapshot_frame, (x1, y1 - 35), (x1 + 200, y1), (0, 0, 255), -1)
+                            cv2.putText(snapshot_frame, f"{header_text}: {original_label.upper()}", (x1 + 5, y1 - 10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+                            # If it's a zone crossing, highlight the specific line crossed
+                            if is_zone_crossing and 'crossed_zone' in locals() and crossed_zone:
+                                pt1 = (int(crossed_zone[0][0]), int(crossed_zone[0][1]))
+                                pt2 = (int(crossed_zone[1][0]), int(crossed_zone[1][1]))
+                                # Draw thick red line over the boundary
+                                cv2.line(snapshot_frame, pt1, pt2, (0, 0, 255), 5)
+                                # Add "CROSSED" text near the line
+                                cv2.putText(snapshot_frame, "BREACH POINT", (pt1[0], pt1[1] - 10),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
+
+                            ret, buffer = cv2.imencode('.jpg', snapshot_frame)
                             if ret:
                                 file_name = f"events/{camera['id']}_{int(time.time())}.jpg"
                                 try:
@@ -330,9 +603,12 @@ def process_stream(camera, model, stop_event):
                                     supabase.table('events').insert({
                                         "camera_id": camera['id'], "ai_model_id": model['id'],
                                         "event_type": label, "confidence": conf * 100,
-                                        "snapshot_url": snapshot_url, "metadata": {"box": box.xywh.tolist()},
+                                        "snapshot_url": snapshot_url, "metadata": {"box": box.xywhn.tolist()[0]},
                                         "acknowledged": False
                                     }).execute()
+                                    
+                                    # LOG SUCCESSFUL INSERT
+                                    print(f"[{camera['name']}] Event INSERTED with Highlights: {label}")
                                     
                                     tracker[obj_id]['alerted'] = True
                                     detected = True # Triggers camera cooldown
@@ -475,10 +751,30 @@ def process_system_commands():
                         smtp_pass = test_settings.get('smtp_pass')
                         smtp_from = test_settings.get('smtp_from')
                         
-                        msg = MIMEText(f"This is a test email from your AI Surveillance System.\n\nTime: {datetime.now()}\nStatus: System Operational")
+                        # Build recipient list for visual confirmation
+                        recipients = []
+                        if test_settings.get('admin_email'):
+                             recipients.append(test_settings.get('admin_email'))
+                        
+                        # Fetch extra emails if any (just to verify connection to DB too)
+                        try:
+                            resp = supabase.table('notification_emails').select('email').execute()
+                            if resp.data:
+                                extra = [r['email'] for r in resp.data]
+                                recipients.extend(extra)
+                        except:
+                            pass
+                        
+                        unique_recipients = list(set([r for r in recipients if r]))
+                        
+                        if not unique_recipients:
+                             # Fallback if list empty during test, try to use input
+                             raise Exception("No recipients found. Please enter an Admin Email.")
+
+                        msg = MIMEText(f"This is a test email from your AI Surveillance System.\n\nTime: {datetime.now()}\nStatus: System Operational\n\nThis message was sent to confirm your configuration is working and capable of reaching all {len(unique_recipients)} recipients.")
                         msg['Subject'] = "Test Email - Real Star Security"
                         msg['From'] = smtp_from
-                        msg['To'] = test_settings.get('admin_email')
+                        msg['To'] = ", ".join(unique_recipients)
 
                         print(f"Connecting to SMTP: {smtp_host}:{smtp_port} as {smtp_user}")
 
@@ -492,7 +788,7 @@ def process_system_commands():
                             server.login(smtp_user, smtp_pass)
                             server.send_message(msg)
                             
-                        result = "Email sent successfully."
+                        result = f"Email sent successfully to {len(unique_recipients)} recipients."
 
                     elif cmd['command_type'] == 'test_camera_connection':
                         stream_url = payload.get('stream_url')
@@ -555,6 +851,13 @@ def process_system_commands():
                         cap.release()
                         
                         result = f"Success! Resolution: {int(width)}x{int(height)}, FPS: {int(fps)}"
+
+                    elif cmd['command_type'] == 'update_zones':
+                         # Zones are now updated in DB directly by frontend. 
+                         # This command serves as a notification to logs or potentially to force refresh.
+                         # Since load_zones() polls DB, we just ack.
+                         print(f"Received zone update notification for {cmd.get('payload', {}).get('camera_id', 'unknown')}")
+                         result = "Zones update acknowledged. AI will pick up changes shortly."
                         
                     else:
                         result = "Unknown command type."

@@ -21,6 +21,39 @@ export default function AIServerManagement() {
     loadServers();
   }, []);
 
+  const removeDuplicates = async () => {
+    if (!confirm('This will remove duplicate AI servers (keeping the oldest entry for each IP). Continue?')) {
+      return;
+    }
+
+    // Find duplicates based on IP address and port
+    const seen = new Map();
+    const duplicates = [];
+
+    for (const server of servers) {
+      const key = `${server.ip_address}:${server.port}`;
+      if (seen.has(key)) {
+        // This is a duplicate - keep the older one (first occurrence)
+        duplicates.push(server);
+      } else {
+        seen.set(key, server);
+      }
+    }
+
+    if (duplicates.length === 0) {
+      alert('No duplicates found!');
+      return;
+    }
+
+    // Remove duplicates
+    for (const dup of duplicates) {
+      await supabase.from('ai_servers').delete().eq('id', dup.id);
+    }
+
+    alert(`Removed ${duplicates.length} duplicate server(s)!`);
+    loadServers();
+  };
+
   const loadServers = async () => {
     const { data } = await supabase.from('ai_servers').select('*').order('created_at', { ascending: false });
     if (data) setServers(data);
@@ -29,7 +62,26 @@ export default function AIServerManagement() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Check for duplicate IP address when adding new server
+    if (!editingServer) {
+      const duplicate = servers.find(
+        s => s.ip_address === formData.ip_address && s.port === formData.port
+      );
+      if (duplicate) {
+        alert(`A server with IP ${formData.ip_address}:${formData.port} already exists (${duplicate.name}). Please use a different IP address or edit the existing server.`);
+        return;
+      }
+    }
+
     if (editingServer) {
+      // Check if changing to a duplicate IP
+      const duplicate = servers.find(
+        s => s.id !== editingServer.id && s.ip_address === formData.ip_address && s.port === formData.port
+      );
+      if (duplicate) {
+        alert(`A server with IP ${formData.ip_address}:${formData.port} already exists (${duplicate.name}). Please use a different IP address.`);
+        return;
+      }
       await supabase
         .from('ai_servers')
         .update({ ...formData, updated_at: new Date().toISOString() })
@@ -119,6 +171,14 @@ export default function AIServerManagement() {
               <LayoutGrid size={18} />
             </button>
           </div>
+          <button
+            onClick={removeDuplicates}
+            className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
+            title="Remove duplicate servers with same IP"
+          >
+            <Trash2 size={18} />
+            Remove Duplicates
+          </button>
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"

@@ -108,6 +108,7 @@ export type SystemSettings = {
   company_name: string;
   admin_email: string;
   retention_days: number;
+  boundary_alerts_only: boolean;
   alert_email_enabled: boolean;
   smtp_host?: string;
   smtp_port?: number;
@@ -119,5 +120,17 @@ export type SystemSettings = {
   sms_account_sid?: string;
   sms_auth_token?: string;
   sms_from?: string;
+  updated_at: string;
+};
+
+export type AlertRule = {
+  id: string;
+  camera_id: string | null; // null = global rule
+  enabled_objects: string[]; // Array of object types to trigger on
+  disabled_objects: string[]; // Array of objects to exclude
+  mode: 'whitelist' | 'blacklist';
+  apply_to_zones_only: boolean;
+  confidence_threshold: number;
+  created_at: string;
   updated_at: string;
 };

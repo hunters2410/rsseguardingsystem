@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Bell, CheckCircle, AlertTriangle, Camera, Brain, Filter, LayoutList, LayoutGrid, Trash2, ExternalLink, CheckSquare, Square, ChevronLeft, ChevronRight, Search, Calendar, X, AlertCircle } from 'lucide-react';
+import { Bell, CheckCircle, AlertTriangle, Camera, Filter, LayoutList, LayoutGrid, Trash2, ExternalLink, CheckSquare, Square, ChevronLeft, ChevronRight, Search, Calendar, X, AlertCircle } from 'lucide-react';
 import { supabase, type Event, type Camera as CameraType } from '../lib/supabase';
 import EventNotifications from './EventNotifications';
+import EventStatistics from './EventStatistics';
 
 export default function EventsMonitoring() {
   const [events, setEvents] = useState<Event[]>([]);
@@ -185,12 +186,38 @@ export default function EventsMonitoring() {
         return '🔄';
       case 'intrusion':
         return '⚠️';
+      case 'weapon':
+      case 'gun':
+      case 'pistol':
+      case 'rifle':
+      case 'firearm':
+      case 'knife':
+      case 'handgun':
+      case 'weapon_detected':
+        return '🔫';
+      case 'no-helmet':
+      case 'NO-Hardhat':
+        return '👷‍♂️';
+      case 'no-vest':
+      case 'NO-Safety Vest':
+        return '🦺';
+      case 'no-mask':
+      case 'NO-Mask':
+        return '😷';
+      case 'helmet':
+      case 'Hardhat':
+        return '⛑️';
+      case 'vest':
+      case 'Safety Vest':
+        return '🦺';
       default:
+        if (eventType.includes('_crossing')) return '🚷';
         return '📍';
     }
   };
 
   const getEventTypeColor = (eventType: string) => {
+    if (eventType.includes('_crossing')) return 'bg-purple-100 text-purple-700 font-bold border-2 border-purple-500';
     switch (eventType) {
       case 'person_detected':
         return 'bg-blue-100 text-blue-700';
@@ -200,6 +227,27 @@ export default function EventsMonitoring() {
         return 'bg-yellow-100 text-yellow-700';
       case 'intrusion':
         return 'bg-red-100 text-red-700';
+      case 'weapon':
+      case 'gun':
+      case 'pistol':
+      case 'rifle':
+      case 'firearm':
+      case 'knife':
+      case 'handgun':
+      case 'weapon_detected':
+        return 'bg-red-600 text-white animate-pulse';
+      case 'no-helmet':
+      case 'NO-Hardhat':
+      case 'no-vest':
+      case 'NO-Safety Vest':
+      case 'no-mask':
+      case 'NO-Mask':
+        return 'bg-orange-100 text-orange-800 border-2 border-orange-500 rounded-lg';
+      case 'helmet':
+      case 'Hardhat':
+      case 'vest':
+      case 'Safety Vest':
+        return 'bg-green-100 text-green-700';
       default:
         return 'bg-slate-100 dark:bg-slate-700 text-slate-700';
     }
@@ -238,155 +286,144 @@ export default function EventsMonitoring() {
             <p className="text-slate-600 mt-1">AI-detected events from all cameras</p>
           </div>
           <div className="flex items-center gap-3">
-            {selectedEventIds.size > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleBulkAcknowledge}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                >
-                  <CheckCircle size={16} />
-                  Acknowledge ({selectedEventIds.size})
-                </button>
-                <button
-                  onClick={handleBulkDelete}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
-                >
-                  <Trash2 size={16} />
-                  Delete ({selectedEventIds.size})
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-lg text-sm font-medium border border-blue-100 dark:border-blue-900/50">
+              <Bell size={16} />
+              <span>{events.filter((e) => !e.acknowledged).length} unacknowledged</span>
+            </div>
             <button
               onClick={handleClearAllEvents}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium border-2 border-red-700"
-              title="Permanently delete ALL events from database"
+              className="px-3 py-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors"
+              title="Permanently delete ALL events"
             >
-              <AlertCircle size={16} />
-              Clear All Events
+              Clear History
             </button>
-            <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg">
-              <Bell size={20} />
-              <span className="text-sm font-medium">
-                {events.filter((e) => !e.acknowledged).length} unacknowledged
-              </span>
+          </div>
+        </div>
+
+        <EventStatistics />
+
+        {/* Unified Toolbar */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 space-y-4">
+          {/* Top Row: Search & View Options */}
+          <div className="flex flex-col lg:flex-row gap-4 justify-between">
+            {/* Search */}
+            <div className="relative flex-1 max-w-md group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-red-500 transition-colors" size={18} />
+              <input
+                type="text"
+                placeholder="Search events (e.g. 'person', 'camera 1')..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+              />
             </div>
-          </div>
-        </div>
 
-        <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
-            >
-              <LayoutList size={18} />
-            </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
-            >
-              <LayoutGrid size={18} />
-            </button>
-          </div>
-        </div>
+            {/* View Toggles & Bulk Actions */}
+            <div className="flex items-center gap-3">
+              {selectedEventIds.size > 0 && (
+                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <button
+                    onClick={handleBulkAcknowledge}
+                    className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm hover:shadow"
+                  >
+                    <CheckCircle size={16} />
+                    <span className="hidden sm:inline">Ack ({selectedEventIds.size})</span>
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm hover:shadow"
+                  >
+                    <Trash2 size={16} />
+                    <span className="hidden sm:inline">Del ({selectedEventIds.size})</span>
+                  </button>
+                </div>
+              )}
 
-        {/* Search and Filter Bar */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search Input */}
-            <div className="flex-1 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search events..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-slate-900 dark:text-white"
-                />
+              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-2 hidden sm:block" />
+
+              <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+                  title="List View"
+                >
+                  <LayoutList size={18} />
+                </button>
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+                  title="Grid View"
+                >
+                  <LayoutGrid size={18} />
+                </button>
               </div>
-              <button
-                onClick={loadEvents}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium whitespace-nowrap"
-              >
-                <Search size={16} />
-                Search
-              </button>
-              <button
-                onClick={handleClearFilters}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm font-medium whitespace-nowrap border border-slate-200 dark:border-slate-600"
-                title="Clear all filters"
-              >
-                <X size={16} />
-                Clear All
-              </button>
+            </div>
+          </div>
+
+          {/* Second Row: Filters */}
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between border-t border-slate-100 dark:border-slate-700 pt-4">
+
+            {/* Status Tabs */}
+            <div className="flex p-1 bg-slate-100 dark:bg-slate-900/50 rounded-lg self-start sm:self-auto">
+              {['all', 'unacknowledged', 'acknowledged'].map(status => (
+                <button
+                  key={status}
+                  onClick={() => setFilter(status as any)}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-all ${filter === status
+                    ? 'bg-white dark:bg-slate-700 string shadow-sm text-slate-900 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                    }`}
+                >
+                  {status}
+                </button>
+              ))}
             </div>
 
-            {/* Date Range Filters */}
-            <div className="flex gap-2">
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            {/* Dropdowns */}
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-none h-10">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                <select
+                  value={eventTypeFilter}
+                  onChange={(e) => setEventTypeFilter(e.target.value)}
+                  className="h-full pl-9 pr-8 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none appearance-none cursor-pointer hover:border-slate-300 transition-colors w-full sm:w-48"
+                >
+                  <option value="all">All Event Types</option>
+                  {uniqueEventTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type.replace('_', ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 h-10 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 hover:border-slate-300 transition-colors">
+                <Calendar className="text-slate-400" size={16} />
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-900 dark:text-white"
-                  placeholder="Start Date"
+                  className="bg-transparent border-none p-0 text-sm text-slate-600 dark:text-slate-300 focus:ring-0 w-28"
                 />
-              </div>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <span className="text-slate-300">to</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-900 dark:text-white"
-                  placeholder="End Date"
+                  className="bg-transparent border-none p-0 text-sm text-slate-600 dark:text-slate-300 focus:ring-0 w-28"
                 />
               </div>
+
+              {(searchQuery || startDate || endDate || eventTypeFilter !== 'all' || filter !== 'all') && (
+                <button
+                  onClick={handleClearFilters}
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                  title="Clear Filters"
+                >
+                  <X size={18} />
+                </button>
+              )}
             </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg transition-colors ${filter === 'all' ? 'bg-red-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                }`}
-            >
-              All Events
-            </button>
-            <button
-              onClick={() => setFilter('unacknowledged')}
-              className={`px-4 py-2 rounded-lg transition-colors ${filter === 'unacknowledged' ? 'bg-red-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                }`}
-            >
-              Unacknowledged
-            </button>
-            <button
-              onClick={() => setFilter('acknowledged')}
-              className={`px-4 py-2 rounded-lg transition-colors ${filter === 'acknowledged' ? 'bg-red-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                }`}
-            >
-              Acknowledged
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Filter size={20} className="text-slate-400" />
-            <select
-              value={eventTypeFilter}
-              onChange={(e) => setEventTypeFilter(e.target.value)}
-              className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
-            >
-              <option value="all">All Types</option>
-              {uniqueEventTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type.replace('_', ' ')}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -506,99 +543,115 @@ export default function EventsMonitoring() {
               paginatedEvents.map((event) => (
                 <div
                   key={event.id}
-                  className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border p-6 transition-all relative ${event.acknowledged ? 'border-slate-200' : 'border-orange-200 bg-orange-50'
+                  className={`group bg-white dark:bg-slate-800 rounded-2xl shadow-sm border transition-all hover:shadow-md ${event.acknowledged
+                    ? 'border-slate-200 dark:border-slate-700'
+                    : 'border-orange-200 dark:border-orange-900/50 bg-orange-50/30'
                     } ${selectedEventIds.has(event.id) ? 'ring-2 ring-red-500' : ''}`}
                 >
-                  <div className="absolute top-4 right-4 z-10">
-                    <button
-                      onClick={() => handleToggleSelect(event.id)}
-                      className="text-slate-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 transition-colors"
-                    >
-                      {selectedEventIds.has(event.id) ? (
-                        <CheckSquare size={20} className="text-red-600 dark:text-red-500" />
-                      ) : (
-                        <Square size={20} />
-                      )}
-                    </button>
-                  </div>
-                  <div className="flex items-start justify-between pr-10">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="text-4xl">{getEventTypeIcon(event.event_type)}</div>
-
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className={`px-3 py-1 rounded-lg text-sm font-medium ${getEventTypeColor(event.event_type)}`}>
-                            {event.event_type.replace('_', ' ')}
-                          </span>
-                          {event.confidence && (
-                            <span className="text-sm text-slate-600 dark:text-slate-400">Confidence: {event.confidence}%</span>
-                          )}
-                          {event.acknowledged && (
-                            <span className="flex items-center gap-1 text-sm text-green-600">
-                              <CheckCircle size={16} />
-                              Acknowledged
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-4 text-sm text-slate-600 mb-3">
-                          <div className="flex items-center gap-2">
-                            <Camera size={16} />
-                            <span>{getCameraName(event.camera_id)}</span>
-                          </div>
-                          {event.ai_model_id && (
-                            <div className="flex items-center gap-2">
-                              <Brain size={16} />
-                              <span>AI Model</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2">
-                            <span>{new Date(event.created_at).toLocaleString()}</span>
-                          </div>
-                        </div>
-
-                        {event.snapshot_url && (
-                          <div className="mb-3">
-                            <a
-                              href={event.snapshot_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
-                            >
-                              <ExternalLink size={16} />
-                              View Snapshot
-                            </a>
-                          </div>
+                  <div className="relative aspect-video bg-slate-100 dark:bg-slate-900 rounded-t-2xl overflow-hidden">
+                    {/* Selection Checkbox Overlay */}
+                    <div className={`absolute top-2 right-2 z-10 transition-opacity ${selectedEventIds.has(event.id) || 'hidden group-hover:block'}`}>
+                      <button
+                        onClick={() => handleToggleSelect(event.id)}
+                        className="p-1.5 rounded-lg bg-black/60 hover:bg-red-600 backdrop-blur-sm text-white transition-colors"
+                      >
+                        {selectedEventIds.has(event.id) ? (
+                          <CheckSquare size={18} className="text-white" />
+                        ) : (
+                          <Square size={18} />
                         )}
-
-                        {event.metadata && Object.keys(event.metadata).length > 0 && (
-                          <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 text-sm">
-                            <p className="font-medium text-slate-700 mb-1">Event Details:</p>
-                            <pre className="text-slate-600 whitespace-pre-wrap">
-                              {JSON.stringify(event.metadata, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
+                      </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {!event.acknowledged && (
+                    {/* Snapshot or Fallback */}
+                    {event.snapshot_url ? (
+                      <img
+                        src={event.snapshot_url}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        alt={event.event_type}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-slate-300">
+                        <div className="text-6xl">{getEventTypeIcon(event.event_type)}</div>
+                      </div>
+                    )}
+
+                    {/* Type Badge */}
+                    <div className="absolute top-2 left-2 flex flex-col gap-2">
+                      <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-md border border-white/10 ${getEventTypeColor(event.event_type).includes('bg-red')
+                        ? 'bg-red-600/90 text-white'
+                        : 'bg-white/90 text-slate-900'
+                        }`}>
+                        {event.event_type.replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    {/* Bottom Info Gradient */}
+                    <div className="absolute bottom-0 inset-x-0 h-16 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none" />
+
+                    <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end text-white text-xs font-medium">
+                      <div className="flex items-center gap-1.5 text-white/90">
+                        <Camera size={14} className="text-white/70" />
+                        <span className="truncate max-w-[120px]">{getCameraName(event.camera_id)}</span>
+                      </div>
+                      <div className={`px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/10 ${(event.confidence || 0) > 80 ? 'bg-green-500/40 text-green-100' : 'bg-yellow-500/40 text-yellow-100'
+                        }`}>
+                        {Math.round(event.confidence || 0)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">
+                          {new Date(event.created_at).toLocaleDateString()}
+                        </span>
+                        <span className="text-lg font-bold text-slate-800 dark:text-white tabular-nums">
+                          {new Date(event.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      {event.acknowledged ? (
+                        <span className="flex items-center gap-1.5 text-green-700 bg-green-50 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full text-xs font-semibold border border-green-100 dark:border-green-900/50">
+                          <CheckCircle size={12} className="stroke-[2.5]" />
+                          Ack
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-orange-700 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400 px-2.5 py-1 rounded-full text-xs font-semibold border border-orange-100 dark:border-orange-900/50 animate-pulse">
+                          <AlertCircle size={12} className="stroke-[2.5]" />
+                          New
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                      {!event.acknowledged ? (
+                        <>
+                          <button
+                            onClick={() => acknowledgeEvent(event.id)}
+                            className="flex items-center justify-center gap-2 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 font-medium text-sm transition-all shadow-sm hover:shadow active:scale-95"
+                          >
+                            <CheckCircle size={16} />
+                            Ack
+                          </button>
+                          <button
+                            onClick={() => deleteEvent(event.id)}
+                            className="flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 font-medium text-sm transition-all active:scale-95"
+                          >
+                            <Trash2 size={16} />
+                            Del
+                          </button>
+                        </>
+                      ) : (
                         <button
-                          onClick={() => acknowledgeEvent(event.id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                          onClick={() => deleteEvent(event.id)}
+                          className="col-span-2 flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 font-medium text-sm transition-all active:scale-95 group/del"
                         >
-                          <CheckCircle size={18} />
-                          Acknowledge
+                          <Trash2 size={16} className="group-hover/del:text-red-500" />
+                          Delete Event
                         </button>
                       )}
-                      <button
-                        onClick={() => deleteEvent(event.id)}
-                        className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                      >
-                        <Trash2 size={18} />
-                        Delete
-                      </button>
                     </div>
                   </div>
                 </div>

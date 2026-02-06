@@ -14,8 +14,10 @@ import Footer from './components/Footer';
 import TrainingManagement from './components/TrainingManagement';
 import Header from './components/Header';
 import Settings from './components/Settings';
-import EventNotification from './components/EventNotification';
+import EventNotifications from './components/EventNotifications';
 import Manual from './components/Manual';
+import ZoneSettings from './components/ZoneSettings';
+import AlertConfiguration from './components/AlertConfiguration';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -58,6 +60,10 @@ function AppContent() {
         return <Manual />;
       case 'settings':
         return <Settings />;
+      case 'zones':
+        return <ZoneSettings />;
+      case 'alert-config':
+        return <AlertConfiguration />;
       default:
         return <Dashboard />;
     }
@@ -106,7 +112,7 @@ function AppContent() {
           {renderView()}
         </div>
         <Footer />
-        <EventNotification />
+        <EventNotifications />
       </main>
     </div>
   );

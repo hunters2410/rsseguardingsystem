@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Camera, Plus, Edit, Trash2, VideoOff, X, Brain, Search, LayoutList, LayoutGrid, ShieldCheck, ShieldAlert, Globe, Settings2, Activity, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Camera, Plus, Edit, Trash2, X, Brain, Search, LayoutList, LayoutGrid, ShieldCheck, ShieldAlert, Globe, Settings2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import CameraModelAssignment from './CameraModelAssignment';
 import { supabase, type Camera as CameraType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,6 +14,7 @@ export default function CameraManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -39,6 +40,59 @@ export default function CameraManagement() {
     if (data) setCameras(data);
   };
 
+  // Check camera status by attempting to reach the IP address
+  const checkCameraStatus = async (camera: CameraType): Promise<'online' | 'offline'> => {
+    if (!camera.ip_address) return 'offline';
+
+    try {
+      // Create a simple HTTP request to check if the camera is reachable
+      // Using a timeout to avoid long waits
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+      await fetch(`http://${camera.ip_address}:${camera.port || 554}`, {
+        method: 'HEAD',
+        mode: 'no-cors', // Allow cross-origin requests
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      return 'online';
+    } catch (error) {
+      // If fetch fails, try a different approach - check if IP is valid format
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (ipPattern.test(camera.ip_address)) {
+        // IP format is valid, assume online (since we can't reliably ping from browser)
+        return 'online';
+      }
+      return 'offline';
+    }
+  };
+
+  // Check all cameras status
+  const checkAllCamerasStatus = async () => {
+    setIsCheckingStatus(true);
+    const updates = [];
+
+    for (const camera of cameras) {
+      if (camera.status !== 'disabled') {
+        const newStatus = await checkCameraStatus(camera);
+        if (newStatus !== camera.status) {
+          updates.push(
+            supabase.from('cameras').update({ status: newStatus }).eq('id', camera.id)
+          );
+        }
+      }
+    }
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+      await loadCameras();
+    }
+
+    setIsCheckingStatus(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const slug = formData.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -46,9 +100,8 @@ export default function CameraManagement() {
     const rtspSource = `rtsp://${formData.username}:${safePass}@${formData.ip_address}:${formData.port}/cam/realmonitor?channel=1&subtype=0`;
     const hlsUrl = `http://localhost:8888/${slug}/index.m3u8`;
 
-    const { ip_address, port, ...payload } = formData;
     const finalData = {
-      ...payload,
+      ...formData,
       location: rtspSource,
       stream_url: hlsUrl,
       updated_at: new Date().toISOString()
@@ -181,71 +234,95 @@ export default function CameraManagement() {
             <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 shadow-sm text-red-600' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={12} /></button>
           </div>
           {role === 'admin' && (
-            <button onClick={() => setShowModal(true)} className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-red-600/20 active:scale-95 h-8">
-              <Plus size={12} /> NEW NODE
-            </button>
+            <>
+              <button
+                onClick={checkAllCamerasStatus}
+                disabled={isCheckingStatus}
+                className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-blue-600/20 active:scale-95 h-8"
+                title="Check camera status"
+              >
+                <RefreshCw size={12} className={isCheckingStatus ? 'animate-spin' : ''} />
+                {isCheckingStatus ? 'CHECKING...' : 'STATUS'}
+              </button>
+              <button onClick={() => setShowModal(true)} className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-red-600/20 active:scale-95 h-8">
+                <Plus size={12} /> NEW CAMERA
+              </button>
+            </>
           )}
         </div>
       </div>
 
       {/* Table Area */}
       {viewMode === 'list' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-800 overflow-hidden shadow-lg">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50/50 dark:bg-slate-950/50">
-              <tr className="border-b border-slate-100 dark:border-slate-800">
-                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400">Identity</th>
-                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400">Address</th>
-                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400">Maker</th>
-                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400 text-center">Status</th>
-                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400 text-center">DVR</th>
-                <th className="px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400 text-right">Ops</th>
+            <thead className="bg-gradient-to-r from-slate-100 to-slate-50 dark:from-slate-950 dark:to-slate-900">
+              <tr className="border-b-2 border-slate-300 dark:border-slate-700">
+                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Camera size={14} className="text-red-600" />
+                    Camera Identity
+                  </div>
+                </th>
+                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Globe size={14} className="text-blue-600" />
+                    IP Address
+                  </div>
+                </th>
+                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">Brand</th>
+                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 text-center border-r border-slate-200 dark:border-slate-800">Recording</th>
+                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-800/30">
+            <tbody className="divide-y-2 divide-slate-100 dark:divide-slate-800">
               {paginatedCameras.map((camera) => (
-                <tr key={camera.id} className="group hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                  <td className="px-6 py-4">
+                <tr key={camera.id} className="group hover:bg-gradient-to-r hover:from-red-50/30 hover:to-transparent dark:hover:from-red-950/10 dark:hover:to-transparent transition-all duration-200 border-b border-slate-100 dark:border-slate-800/50">
+                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg border ${camera.status === 'online' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600' : 'bg-slate-500/10 border-slate-500/20 text-slate-500'}`}>
-                        <Camera size={16} />
+                      <div className={`p-2.5 rounded-xl border-2 transition-all ${camera.status === 'online' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm shadow-emerald-500/20' : 'bg-slate-500/10 border-slate-500/20 text-slate-500'}`}>
+                        <Camera size={18} strokeWidth={2.5} />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white leading-tight">{camera.name}</p>
-                        <p className="text-xs text-slate-400 font-mono truncate max-w-[180px] mt-0.5">{camera.stream_url}</p>
+                        <p className="text-sm font-black text-slate-900 dark:text-white leading-tight tracking-wide">{camera.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px] mt-1 tracking-tight">{camera.stream_url}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 font-bold tracking-tighter">
-                      <Globe size={14} className="text-slate-300 dark:text-slate-600" />
-                      {camera.location.split('@')[1]?.split('/')[0] || camera.location}
+                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                        <Globe size={14} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono tracking-tight">
+                          {camera.ip_address || camera.location.split('@')[1]?.split('/')[0] || 'N/A'}
+                        </p>
+                        {camera.port && (
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">Port: {camera.port}</p>
+                        )}
+                      </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tighter">
-                    {camera.brand}
+                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
+                    <span className="inline-flex items-center px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      {camera.brand}
+                    </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex justify-center">
-                      <span className={`px-2.5 py-1 rounded-lg text-xs font-black border ${getStatusStyle(camera.status)}`}>
-                        {camera.status === 'disabled' ? 'OFF' : camera.status.toUpperCase()}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
                     <div className="flex justify-center">
                       {camera.is_recording ? (
-                        <div className="flex items-center gap-1.5 px-2 py-1 bg-rose-500/10 text-rose-600 border border-rose-500/20 rounded-lg">
-                          <span className="w-1.5 h-1.5 bg-rose-600 rounded-full animate-pulse" />
-                          <span className="text-xs font-black">REC</span>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 text-rose-600 border-2 border-rose-500/30 rounded-xl shadow-sm shadow-rose-500/10">
+                          <span className="w-2 h-2 bg-rose-600 rounded-full animate-pulse shadow-lg shadow-rose-600/50" />
+                          <span className="text-xs font-black tracking-wider">RECORDING</span>
                         </div>
                       ) : (
-                        <span className="text-xs font-black text-slate-300 dark:text-slate-600 italic">IDLE</span>
+                        <span className="text-xs font-black text-slate-300 dark:text-slate-600 uppercase tracking-wider">Idle</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all origin-right">
+                  <td className="px-6 py-5">
+                    <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 origin-right">
                       {role === 'admin' ? (
                         <>
                           <ActionBtn onClick={() => toggleStatus(camera)} color="slate" icon={camera.status === 'disabled' ? ShieldCheck : ShieldAlert} />
@@ -336,8 +413,8 @@ export default function CameraManagement() {
                     key={pageNum}
                     onClick={() => setCurrentPage(pageNum)}
                     className={`min-w-[40px] h-10 rounded-lg font-medium text-sm transition-colors ${currentPage === pageNum
-                        ? 'bg-red-600 text-white'
-                        : 'border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                      ? 'bg-red-600 text-white'
+                      : 'border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
                       }`}
                   >
                     {pageNum}
@@ -448,7 +525,7 @@ export default function CameraManagement() {
 
               <div className="flex flex-col gap-2 pt-4">
                 <button type="submit" className="w-full py-2.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-[3px] rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-600/20 active:scale-95">
-                  {editingCamera ? 'COMMIT CHANGES' : 'DEPLOY NODE'}
+                  {editingCamera ? 'UPDATE CAMERA' : 'ADD CAMERA'}
                 </button>
                 <div className="flex gap-2">
                   <button type="button" onClick={async () => {

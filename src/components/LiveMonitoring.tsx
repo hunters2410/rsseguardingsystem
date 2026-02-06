@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Monitor, Maximize2, AlertCircle, Grid, LayoutGrid, Search, Activity, TrendingUp, Brain, Zap, VideoOff } from 'lucide-react';
+import { Monitor, Maximize2, AlertCircle, Grid, LayoutGrid, Search, Activity, TrendingUp, Brain, Zap, VideoOff, Video } from 'lucide-react';
 import { supabase, type Camera, type Event } from '../lib/supabase';
 import StreamPlayer from './StreamPlayer';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ export default function LiveMonitoring() {
   const [events, setEvents] = useState<Event[]>([]);
   const [stats, setStats] = useState({ totalToday: 0, avgConfidence: 0, topType: '' });
   const [modelCounts, setModelCounts] = useState<Record<string, number>>({});
+  const [detectionsMap, setDetectionsMap] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     loadCameras();
@@ -27,6 +28,30 @@ export default function LiveMonitoring() {
         (payload) => {
           const newEvent = payload.new as Event;
           setEvents((prev) => [newEvent, ...prev].slice(0, 20)); // Prepend and keep size
+
+          // Add to detections map for visual tags
+          if (newEvent.metadata && newEvent.metadata.box) {
+            const detection = {
+              id: newEvent.id,
+              label: newEvent.event_type.replace('_', ' ').toUpperCase(),
+              confidence: newEvent.confidence,
+              box: newEvent.metadata.box,
+              timestamp: Date.now()
+            };
+
+            setDetectionsMap(prev => ({
+              ...prev,
+              [newEvent.camera_id]: [...(prev[newEvent.camera_id] || []), detection]
+            }));
+
+            // Clean up detection after 5 seconds
+            setTimeout(() => {
+              setDetectionsMap(prev => ({
+                ...prev,
+                [newEvent.camera_id]: (prev[newEvent.camera_id] || []).filter(d => d.id !== newEvent.id)
+              }));
+            }, 5000);
+          }
 
           // Trigger Popup Alert
           const matchedCam = camerasRef.current.find(c => c.id === newEvent.camera_id);
@@ -113,14 +138,47 @@ export default function LiveMonitoring() {
     return camera?.name || 'Unknown';
   };
 
+  const toggleRecording = async (cameraId: string) => {
+    const cam = cameras.find(c => c.id === cameraId);
+    if (!cam) return;
+
+    const newStatus = !cam.is_recording;
+
+    // Optimistic update
+    setCameras(prev => prev.map(c => c.id === cameraId ? { ...c, is_recording: newStatus } : c));
+
+    // In a real system, this would trigger a backend recording service
+    // For this demo, it toggles the UI state to start client-side recording in StreamPlayer component
+    try {
+      await supabase.from('cameras').update({ is_recording: newStatus }).eq('id', cameraId);
+      toast.success(newStatus ? 'Recording started on ' + cam.name : 'Recording stopped');
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to update recording status");
+      // Revert
+      setCameras(prev => prev.map(c => c.id === cameraId ? { ...c, is_recording: !newStatus } : c));
+    }
+  };
+
   const getEventIcon = (type: string) => {
     switch (type) {
       case 'person_detection': return '👤';
       case 'vehicle_detection': return '🚗';
       case 'intrusion_detection': return '⚠️';
       case 'weapon_detection': return '🔫';
+      case 'gun': return '🔫';
+      case 'pistol': return '🔫';
+      case 'rifle': return '🔫';
+      case 'knife': return '🔪';
+      case 'firearm': return '🔫';
       case 'fire_detection': return '🔥';
-      default: return '📷';
+      case 'no-helmet': return '👷‍♂️';
+      case 'NO-Hardhat': return '👷‍♂️';
+      case 'no-vest': return '🦺';
+      case 'NO-Safety Vest': return '🦺';
+      default:
+        if (type.includes('_crossing')) return '🚷';
+        return '📷';
     }
   };
 
@@ -237,12 +295,14 @@ export default function LiveMonitoring() {
                     className="absolute inset-0 z-0"
                     muted={true}
                     autoPlay={true}
+                    detections={detectionsMap[camera.id] || []}
                   />
 
                   {/* Top Layer Controls */}
+                  {/* Top Layer Controls */}
                   <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-3">
                     <div className="flex justify-between items-start">
-                      {camera.is_recording ? (
+                      {camera.is_recording && !camera.name ? ( // Only show if internal/server recording 
                         <div className="flex items-center gap-2 bg-red-600 text-white px-2 py-1 rounded-lg text-[10px] font-bold shadow-lg animate-pulse">
                           <div className="w-1.5 h-1.5 bg-white rounded-full" />
                           REC
@@ -250,16 +310,21 @@ export default function LiveMonitoring() {
                       ) : <div />}
 
                       <div className="flex gap-2 pointer-events-auto">
+                        {/* Toggle Recording Button */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Optional: logic to hide camera locally
+                            toggleRecording(camera.id);
                           }}
-                          className="p-2 bg-slate-800 bg-opacity-80 rounded-lg hover:bg-opacity-100 transition-all"
-                          title="Hide Camera"
+                          className={`p-2 rounded-lg transition-all ${camera.is_recording
+                            ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
+                            : 'bg-slate-800 bg-opacity-80 text-white hover:bg-opacity-100 hover:text-red-400'
+                            }`}
+                          title={camera.is_recording ? "Stop Recording" : "Start Recording"}
                         >
-                          <VideoOff className="text-white" size={14} />
+                          <Video size={14} className={camera.is_recording ? "fill-current" : ""} />
                         </button>
+
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -319,6 +384,7 @@ export default function LiveMonitoring() {
                     isRecording={selectedCamera.is_recording}
                     autoPlay={true}
                     muted={false}
+                    detections={detectionsMap[selectedCamera.id] || []}
                   />
                 </div>
 

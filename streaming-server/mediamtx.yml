@@ -7,7 +7,7 @@
 # Global settings -> General
 
 # Verbosity of the program; available values are "error", "warn", "info", "debug".
-logLevel: info
+logLevel: debug
 # Destinations of log messages; available values are "stdout", "file" and "syslog".
 logDestinations: [stdout]
 # When destination is "stdout" or "file", emit logs in structured format (JSON).
@@ -768,9 +768,11 @@ paths:
   # 2. Replace the 'source' URL with your real Camera's RTSP link.
   # 3. Restart 'npm run stream'.
   # 4. In the Web App, use URL: http://localhost:8888/cam1
+
   ###############################################
   cam1:
-    source: rtsp://admin:@Bc24680@192.168.1.120:37777/stream1
+    source: rtsp://admin:%40Bc24680@192.168.1.120:37777/stream1
+    rtspTransport: tcp
 
   ###############################################
   # USER DAHUA CAMERA
@@ -778,6 +780,7 @@ paths:
   # Then in the App, use URL: http://localhost:8888/dahua
   ###############################################
   dahua:
-    source: rtsp://admin:@Bc24680@192.168.1.120:37777/cam/realmonitor?channel=1&subtype=0
+    source: rtsp://admin:%40Bc24680@192.168.1.120:37777/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
 
 

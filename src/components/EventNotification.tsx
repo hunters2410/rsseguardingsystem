@@ -3,7 +3,9 @@ import { supabase, type Event } from '../lib/supabase';
 import { toast } from 'sonner';
 
 // Simple alarm sound buffer
-const ALARM_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+// Siren sound for alerts
+// Siren sound for alerts
+const ALARM_SOUND = '/siren.mp3';
 
 export default function EventNotification() {
     const audioRef = useRef<HTMLAudioElement | null>(null);

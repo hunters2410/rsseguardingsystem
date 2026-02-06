@@ -1,4 +1,4 @@
-import { Camera, Server, Brain, Bell, Monitor, Activity, X, ChevronLeft, ChevronRight, Database, Settings, Book } from 'lucide-react';
+import { Camera, Server, Brain, Bell, Monitor, Activity, X, ChevronLeft, ChevronRight, Database, Settings, Book, ScanLine } from 'lucide-react';
 
 type SidebarProps = {
   activeView: string;
@@ -15,9 +15,11 @@ export default function Sidebar({ activeView, onViewChange, isOpen, onClose, isM
     { id: 'cameras', label: 'Cameras', icon: Camera },
     { id: 'servers', label: 'AI Servers', icon: Server },
     { id: 'models', label: 'AI Models', icon: Brain },
+    { id: 'zones', label: 'Zones & Boundaries', icon: ScanLine },
+    { id: 'alert-config', label: 'Alert Configuration', icon: Bell },
     { id: 'training', label: 'Training & Datasets', icon: Database },
-    { id: 'events', label: 'Events', icon: Bell },
-    { id: 'monitoring', label: 'Live Monitor', icon: Activity },
+    { id: 'events', label: 'Events', icon: Activity },
+    { id: 'monitoring', label: 'Live Monitor', icon: Monitor },
     { id: 'manual', label: 'Setup Guide', icon: Book },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

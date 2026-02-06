@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Save, RefreshCw, Mail, MessageSquare, Shield, Lock, Bell, User, Send } from 'lucide-react';
+import { Save, RefreshCw, Mail, MessageSquare, Shield, Lock, Bell, User, Send, ScanLine, Trash2, Plus } from 'lucide-react';
 import { supabase, type SystemSettings } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import ZoneSettings from './ZoneSettings';
 
 export default function Settings() {
     const { user } = useAuth();
@@ -9,7 +10,7 @@ export default function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
-    const [activeTab, setActiveTab] = useState<'general' | 'email' | 'sms' | 'security'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'email' | 'sms' | 'security' | 'zones'>('general');
 
     // Password Change State
     const [password, setPassword] = useState('');
@@ -20,6 +21,7 @@ export default function Settings() {
         company_name: '',
         admin_email: '',
         retention_days: 30,
+        boundary_alerts_only: false,
         alert_email_enabled: false,
         smtp_host: '',
         smtp_port: 587,
@@ -33,9 +35,40 @@ export default function Settings() {
         sms_from: '',
     });
 
+    const [notificationEmails, setNotificationEmails] = useState<{ id: string, email: string }[]>([]);
+    const [newEmail, setNewEmail] = useState('');
+
     useEffect(() => {
         loadSettings();
+        loadNotificationEmails();
     }, []);
+
+    const loadNotificationEmails = async () => {
+        const { data } = await supabase.from('notification_emails').select('*').order('created_at');
+        if (data) setNotificationEmails(data);
+    };
+
+    const addNotificationEmail = async () => {
+        if (!newEmail || !newEmail.includes('@')) return;
+
+        try {
+            const { error } = await supabase.from('notification_emails').insert({ email: newEmail });
+            if (error) throw error;
+            setNewEmail('');
+            loadNotificationEmails();
+        } catch (error: any) {
+            alert('Failed to add email: ' + error.message);
+        }
+    };
+
+    const removeNotificationEmail = async (id: string) => {
+        try {
+            await supabase.from('notification_emails').delete().eq('id', id);
+            loadNotificationEmails();
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     const loadSettings = async () => {
         setLoading(true);
@@ -168,6 +201,8 @@ export default function Settings() {
                         <TabButton id="sms" label="SMS Integration" icon={MessageSquare} />
                         <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
                         <TabButton id="security" label="Security" icon={Lock} />
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
+                        <TabButton id="zones" label="Zones & Boundaries" icon={ScanLine} />
                     </div>
                 </div>
 
@@ -232,6 +267,29 @@ export default function Settings() {
                                             <span className="absolute right-4 top-2.5 text-slate-400 text-sm">Days</span>
                                         </div>
                                         <p className="text-xs text-slate-500 mt-2">Automatically delete old event data after this period.</p>
+                                    </div>
+
+                                    <div className="md:col-span-1 p-4 bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/20 rounded-xl">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex items-center h-6">
+                                                <input
+                                                    id="boundary_alerts_only"
+                                                    name="boundary_alerts_only"
+                                                    type="checkbox"
+                                                    checked={formData.boundary_alerts_only || false}
+                                                    onChange={handleChange}
+                                                    className="w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <label htmlFor="boundary_alerts_only" className="font-semibold text-slate-900 dark:text-white block cursor-pointer select-none">
+                                                    Strict Zone Mode
+                                                </label>
+                                                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                                                    Disable ALL general detection alerts. Only trigger alerts when a boundary is explicitly crossed.
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -347,6 +405,53 @@ export default function Settings() {
                                         </button>
                                     </div>
                                 </form>
+
+                                <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Notification Recipients</h3>
+                                    <div className="space-y-4">
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="email"
+                                                placeholder="Enter recipient email address"
+                                                value={newEmail}
+                                                onChange={(e) => setNewEmail(e.target.value)}
+                                                className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={addNotificationEmail}
+                                                disabled={!newEmail}
+                                                className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2.5 rounded-xl font-medium hover:bg-slate-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                <Plus size={18} /> Add
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
+                                            {notificationEmails.length === 0 ? (
+                                                <div className="p-4 text-center text-slate-500 text-sm">No additional notification emails added.</div>
+                                            ) : (
+                                                notificationEmails.map(recip => (
+                                                    <div key={recip.id} className="p-3 flex justify-between items-center group">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2 bg-white dark:bg-slate-800 rounded-lg text-slate-400">
+                                                                <Mail size={16} />
+                                                            </div>
+                                                            <span className="text-slate-700 dark:text-slate-300 font-medium">{recip.email}</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => removeNotificationEmail(recip.id)}
+                                                            className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                                                            title="Remove email"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
 
                                 <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
                                     <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Test Configuration</h3>
@@ -576,6 +681,12 @@ export default function Settings() {
                                     </div>
                                 </div>
                             </form>
+                        )}
+
+                        {activeTab === 'zones' && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <ZoneSettings />
+                            </div>
                         )}
 
                     </div>
