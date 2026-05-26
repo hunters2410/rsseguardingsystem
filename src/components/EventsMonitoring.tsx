@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, CheckCircle, AlertTriangle, Camera, Filter, LayoutList, LayoutGrid, Trash2, ExternalLink, CheckSquare, Square, ChevronLeft, ChevronRight, Search, Calendar, X, AlertCircle } from 'lucide-react';
+import { Bell, CheckCircle, AlertTriangle, Camera, Filter, LayoutList, LayoutGrid, Trash2, ExternalLink, CheckSquare, Square, ChevronLeft, ChevronRight, Search, Calendar, X, AlertCircle, FileDown } from 'lucide-react';
 import { supabase, type Event, type Camera as CameraType } from '../lib/supabase';
 import EventNotifications from './EventNotifications';
 import EventStatistics from './EventStatistics';
@@ -52,6 +52,59 @@ export default function EventsMonitoring() {
     }
   };
 
+  const handleBulkExport = (format: 'csv' | 'json' = 'csv') => {
+    const ids = Array.from(selectedEventIds);
+    const toExport = ids.length > 0
+      ? events.filter(e => ids.includes(e.id))
+      : filteredEvents;         // export all visible if nothing selected
+    if (toExport.length === 0) return;
+
+    if (format === 'json') {
+      // JSON export
+      const rows = toExport.map(e => ({
+        id: e.id,
+        event_type: e.event_type,
+        camera: getCameraName(e.camera_id),
+        camera_id: e.camera_id,
+        confidence: e.confidence,
+        acknowledged: e.acknowledged,
+        snapshot_url: e.snapshot_url || '',
+        metadata: JSON.stringify(e.metadata || {}),
+        created_at: e.created_at,
+      }));
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `events-export-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      return;
+    }
+
+    // CSV export
+    const headers = ['ID','Event Type','Camera','Confidence (%)','Acknowledged','Snapshot URL','Metadata','Timestamp'];
+    const escape = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csvRows = [
+      headers.join(','),
+      ...toExport.map(e => [
+        escape(e.id),
+        escape(e.event_type),
+        escape(getCameraName(e.camera_id)),
+        escape(e.confidence ?? ''),
+        escape(e.acknowledged ? 'Yes' : 'No'),
+        escape(e.snapshot_url || ''),
+        escape(JSON.stringify(e.metadata || {})),
+        escape(new Date(e.created_at).toLocaleString()),
+      ].join(','))
+    ];
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `events-export-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   const handleClearFilters = () => {
     setSearchQuery('');
     setStartDate('');
@@ -86,40 +139,7 @@ export default function EventsMonitoring() {
     setConfirmText('');
   };
 
-  // Original handleClearAllEvents_OLD - removing
-  const handleClearAllEvents_OLD = async () => {
-    const totalEvents = events.length;
 
-    // First confirmation
-    if (!confirm(`⚠️ WARNING: This will permanently delete ALL ${totalEvents} events from the database!\n\nThis action CANNOT be undone.\n\nAre you absolutely sure?`)) {
-      return;
-    }
-
-    // Second confirmation
-    const confirmText = prompt(
-      `Type "DELETE ALL" (in capitals) to confirm deletion of all ${totalEvents} events:`
-    );
-
-    if (confirmText !== "DELETE ALL") {
-      alert('Deletion cancelled. Events are safe.');
-      return;
-    }
-
-    try {
-      // Delete all events
-      const { error } = await supabase.from('events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
-      if (error) throw error;
-
-      alert(`Successfully deleted all ${totalEvents} events from database.`);
-      setEvents([]);
-      setSelectedEventIds(new Set());
-      loadEvents();
-    } catch (error) {
-      console.error('Error deleting events:', error);
-      alert('Failed to delete events. Please try again.');
-    }
-  };
 
   useEffect(() => {
     loadEvents();
@@ -177,80 +197,86 @@ export default function EventsMonitoring() {
   };
 
   const getEventTypeIcon = (eventType: string) => {
-    switch (eventType) {
-      case 'person_detected':
-        return '👤';
-      case 'vehicle_detected':
-        return '🚗';
-      case 'motion':
-        return '🔄';
-      case 'intrusion':
-        return '⚠️';
-      case 'weapon':
-      case 'gun':
-      case 'pistol':
-      case 'rifle':
-      case 'firearm':
-      case 'knife':
-      case 'handgun':
-      case 'weapon_detected':
-        return '🔫';
-      case 'no-helmet':
-      case 'NO-Hardhat':
-        return '👷‍♂️';
-      case 'no-vest':
-      case 'NO-Safety Vest':
-        return '🦺';
-      case 'no-mask':
-      case 'NO-Mask':
-        return '😷';
-      case 'helmet':
-      case 'Hardhat':
-        return '⛑️';
-      case 'vest':
-      case 'Safety Vest':
-        return '🦺';
-      default:
-        if (eventType.includes('_crossing')) return '🚷';
-        return '📍';
-    }
+    const t = eventType.toLowerCase();
+    if (t.includes('blacklist')) return '🚫';
+    if (t.includes('unknown face')) return '👤';
+    if (t.includes('face detected') || t.includes('face recognized')) return '🆔';
+    if (t.includes('authorized')) return '✅';
+    if (t.includes('loitering')) return '⏳';
+    if (t.includes('crowd')) return '👥';
+    if (t.includes('fight') || t.includes('aggression')) return '🥊';
+    if (t.includes('fall')) return '🚨';
+    if (t.includes('dress_code') || t.includes('dress code')) return '👕';
+    if (t.includes('abandoned')) return '🎒';
+    if (t.includes('illegal_parking') || t.includes('parking')) return '🅿️';
+    if (t.includes('fire')) return '🔥';
+    if (t.includes('smoke')) return '💨';
+    if (t.includes('_crossing')) return '🚷';
+    if (t.includes('_entry')) return '⚠️';
+    if (t.includes('weapon') || t.includes('gun') || t.includes('knife') || t.includes('pistol') || t.includes('rifle') || t.includes('firearm')) return '🔫';
+    if (t.includes('no-hardhat') || t.includes('no-helmet')) return '👷‍♂️';
+    if (t.includes('no-safety vest') || t.includes('no-vest')) return '🦺';
+    if (t.includes('no-mask')) return '😷';
+    if (t.includes('hardhat') || t.includes('helmet')) return '⛑️';
+    if (t.includes('safety vest') || t.includes('vest')) return '🦺';
+    if (t.includes('license_plate') || t.includes('number_plate') || t.includes('license-plate')) return '🪧';
+    if (t.includes('person')) return '👤';
+    if (t.includes('vehicle') || t.includes('car') || t.includes('truck')) return '🚗';
+    if (t.includes('dog') || t.includes('cat') || t.includes('animal')) return '🐾';
+    if (t.includes('tamper')) return '📵';
+    if (t.includes('motion')) return '🔄';
+    if (t.includes('intrusion')) return '⚠️';
+    return '📍';
   };
 
   const getEventTypeColor = (eventType: string) => {
-    if (eventType.includes('_crossing')) return 'bg-purple-100 text-purple-700 font-bold border-2 border-purple-500';
-    switch (eventType) {
-      case 'person_detected':
-        return 'bg-blue-100 text-blue-700';
-      case 'vehicle_detected':
-        return 'bg-green-100 text-green-700';
-      case 'motion':
-        return 'bg-yellow-100 text-yellow-700';
-      case 'intrusion':
-        return 'bg-red-100 text-red-700';
-      case 'weapon':
-      case 'gun':
-      case 'pistol':
-      case 'rifle':
-      case 'firearm':
-      case 'knife':
-      case 'handgun':
-      case 'weapon_detected':
-        return 'bg-red-600 text-white animate-pulse';
-      case 'no-helmet':
-      case 'NO-Hardhat':
-      case 'no-vest':
-      case 'NO-Safety Vest':
-      case 'no-mask':
-      case 'NO-Mask':
-        return 'bg-orange-100 text-orange-800 border-2 border-orange-500 rounded-lg';
-      case 'helmet':
-      case 'Hardhat':
-      case 'vest':
-      case 'Safety Vest':
-        return 'bg-green-100 text-green-700';
-      default:
-        return 'bg-slate-100 dark:bg-slate-700 text-slate-700';
-    }
+    const t = eventType.toLowerCase();
+    if (t.includes('blacklist')) return 'bg-red-700 text-white font-bold animate-pulse';
+    if (t.includes('unknown face')) return 'bg-red-500 text-white font-bold';
+    if (t.includes('weapon') || t.includes('gun') || t.includes('knife') || t.includes('pistol') || t.includes('rifle')) return 'bg-red-600 text-white animate-pulse';
+    if (t.includes('fire') || t.includes('smoke')) return 'bg-orange-600 text-white animate-pulse';
+    if (t.includes('fight') || t.includes('aggression') || t.includes('fall')) return 'bg-red-500 text-white';
+    if (t.includes('_crossing') || t.includes('_entry')) return 'bg-purple-600 text-white border-2 border-purple-400';
+    if (t.includes('no-hardhat') || t.includes('no-safety vest') || t.includes('no-mask') || t.includes('no-helmet') || t.includes('no-vest')) return 'bg-orange-100 text-orange-800 border-2 border-orange-500';
+    if (t.includes('loitering')) return 'bg-amber-100 text-amber-800 border border-amber-400';
+    if (t.includes('crowd')) return 'bg-amber-200 text-amber-900';
+    if (t.includes('dress_code') || t.includes('dress code')) return 'bg-purple-100 text-purple-800 border border-purple-300';
+    if (t.includes('abandoned') || t.includes('parking')) return 'bg-yellow-100 text-yellow-800';
+    if (t.includes('face detected') || t.includes('face recognized')) return 'bg-blue-100 text-blue-700';
+    if (t.includes('authorized')) return 'bg-emerald-100 text-emerald-700';
+    if (t.includes('hardhat') || t.includes('safety vest')) return 'bg-green-100 text-green-700';
+    if (t.includes('license_plate') || t.includes('number_plate')) return 'bg-indigo-100 text-indigo-700 border border-indigo-300 font-bold';
+    if (t.includes('person')) return 'bg-blue-100 text-blue-700';
+    if (t.includes('vehicle') || t.includes('car') || t.includes('truck')) return 'bg-sky-100 text-sky-700';
+    if (t.includes('tamper')) return 'bg-red-100 text-red-700 border border-red-300';
+    return 'bg-slate-100 text-slate-700';
+  };
+
+  // Render rich metadata from AI event as readable badges
+  const MetadataBadges = ({ metadata }: { metadata: Record<string, any> }) => {
+    if (!metadata || Object.keys(metadata).length === 0) return null;
+    const badges: { label: string; value: string; color: string }[] = [];
+    if (metadata.person_name) badges.push({ label: '👤', value: metadata.person_name, color: 'bg-blue-50 text-blue-700 border-blue-200' });
+    if (metadata.role) badges.push({ label: '🏷️', value: metadata.role, color: 'bg-slate-50 text-slate-600 border-slate-200' });
+    if (metadata.department) badges.push({ label: '🏢', value: metadata.department, color: 'bg-slate-50 text-slate-500 border-slate-200' });
+    if (metadata.face_confidence) badges.push({ label: '🎯', value: `${metadata.face_confidence}% match`, color: 'bg-indigo-50 text-indigo-600 border-indigo-200' });
+    if (metadata.dwell_time_min) badges.push({ label: '⏱️', value: `${metadata.dwell_time_min}m dwell`, color: 'bg-amber-50 text-amber-700 border-amber-200' });
+    if (metadata.colors_detected) badges.push({ label: '🎨', value: (metadata.colors_detected as string[]).join(', '), color: 'bg-purple-50 text-purple-700 border-purple-200' });
+    if (metadata.violation_type) badges.push({ label: '⚠️', value: metadata.violation_type, color: 'bg-red-50 text-red-600 border-red-200' });
+    if (metadata.plate_text) badges.push({ label: '🪧', value: metadata.plate_text, color: 'bg-indigo-50 text-indigo-700 border-indigo-300 font-bold' });
+    if (metadata.vehicle) badges.push({ label: '🚗', value: metadata.vehicle, color: 'bg-sky-50 text-sky-700 border-sky-200' });
+    if (metadata.stationary_minutes) badges.push({ label: '🅿️', value: `${metadata.stationary_minutes}m parked`, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' });
+    if (metadata.crowd_count) badges.push({ label: '👥', value: `${metadata.crowd_count} people`, color: 'bg-amber-50 text-amber-700 border-amber-200' });
+    if (badges.length === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-1 mt-1.5">
+        {badges.map((b, i) => (
+          <span key={i} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${b.color}`}>
+            {b.label} {b.value}
+          </span>
+        ))}
+      </div>
+    );
   };
 
   // Apply search query filter
@@ -328,6 +354,14 @@ export default function EventsMonitoring() {
                   >
                     <CheckCircle size={16} />
                     <span className="hidden sm:inline">Ack ({selectedEventIds.size})</span>
+                  </button>
+                  <button
+                    onClick={() => handleBulkExport('csv')}
+                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm hover:shadow"
+                    title="Export selected events as CSV"
+                  >
+                    <FileDown size={16} />
+                    <span className="hidden sm:inline">CSV ({selectedEventIds.size})</span>
                   </button>
                   <button
                     onClick={handleBulkDelete}
@@ -437,10 +471,10 @@ export default function EventsMonitoring() {
           <div className={viewMode === 'grid' ? "space-y-4" : "overflow-x-auto"}>
             {viewMode === 'list' ? (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <table className="w-full text-left">
+                <table className="w-full text-left border-collapse">
                   <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
                     <tr>
-                      <th className="p-4 w-12">
+                      <th className="p-4 w-12 border border-slate-200 dark:border-slate-700">
                         <button
                           onClick={handleSelectAll}
                           className="text-slate-400 hover:text-red-600 transition-colors"
@@ -452,19 +486,19 @@ export default function EventsMonitoring() {
                           )}
                         </button>
                       </th>
-                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Type</th>
-                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Camera</th>
-                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Confidence</th>
-                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Time</th>
-                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Snapshot</th>
-                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Status</th>
-                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Actions</th>
+                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Type</th>
+                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Camera</th>
+                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Confidence</th>
+                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Time</th>
+                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Snapshot</th>
+                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Status</th>
+                      <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                     {paginatedEvents.map((event) => (
-                      <tr key={event.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 ${selectedEventIds.has(event.id) ? 'bg-red-50 dark:bg-red-900/10' : ''}`}>
-                        <td className="p-4">
+                      <tr key={event.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${selectedEventIds.has(event.id) ? 'bg-red-50 dark:bg-red-900/10' : ''}`}>
+                        <td className="p-4 border border-slate-100 dark:border-slate-700">
                           <button
                             onClick={() => handleToggleSelect(event.id)}
                             className="text-slate-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 transition-colors"
@@ -476,20 +510,23 @@ export default function EventsMonitoring() {
                             )}
                           </button>
                         </td>
-                        <td className="p-4 font-medium text-slate-900 dark:text-white">
+                        <td className="p-4 font-medium text-slate-900 dark:text-white border border-slate-100 dark:border-slate-700">
                           <div className="flex items-center gap-2">
                             <div className="text-xl">{getEventTypeIcon(event.event_type)}</div>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${getEventTypeColor(event.event_type)}`}>
-                              {event.event_type.replace('_', ' ')}
-                            </span>
+                            <div>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${getEventTypeColor(event.event_type)}`}>
+                                {event.event_type.replace(/_/g, ' ')}
+                              </span>
+                              <MetadataBadges metadata={event.metadata} />
+                            </div>
                           </div>
                         </td>
-                        <td className="p-4 text-slate-600 dark:text-slate-400">{getCameraName(event.camera_id)}</td>
-                        <td className="p-4 text-slate-600 dark:text-slate-400">{event.confidence}%</td>
-                        <td className="p-4 text-slate-600 dark:text-slate-400">
+                        <td className="p-4 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700">{getCameraName(event.camera_id)}</td>
+                        <td className="p-4 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700">{event.confidence}%</td>
+                        <td className="p-4 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700">
                           {new Date(event.created_at).toLocaleString()}
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 border border-slate-100 dark:border-slate-700">
                           {event.snapshot_url ? (
                             <a
                               href={event.snapshot_url}
@@ -504,7 +541,7 @@ export default function EventsMonitoring() {
                             <span className="text-slate-400 text-sm">-</span>
                           )}
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 border border-slate-100 dark:border-slate-700">
                           {event.acknowledged ? (
                             <span className="flex items-center gap-1 text-sm text-green-600">
                               <CheckCircle size={16} />
@@ -514,7 +551,7 @@ export default function EventsMonitoring() {
                             <span className="text-sm text-orange-600">New</span>
                           )}
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 border border-slate-100 dark:border-slate-700">
                           <div className="flex items-center gap-2">
                             {!event.acknowledged && (
                               <button
@@ -578,13 +615,21 @@ export default function EventsMonitoring() {
                     )}
 
                     {/* Type Badge */}
-                    <div className="absolute top-2 left-2 flex flex-col gap-2">
-                      <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-md border border-white/10 ${getEventTypeColor(event.event_type).includes('bg-red')
-                        ? 'bg-red-600/90 text-white'
-                        : 'bg-white/90 text-slate-900'
+                    <div className="absolute top-2 left-2 flex flex-col gap-1.5 max-w-[70%]">
+                      <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-md border border-white/10 ${getEventTypeColor(event.event_type).includes('bg-red') ? 'bg-red-600/90 text-white' : 'bg-white/90 text-slate-900'
                         }`}>
-                        {event.event_type.replace('_', ' ')}
+                        {getEventTypeIcon(event.event_type)} {event.event_type.replace(/_/g, ' ')}
                       </span>
+                      {event.metadata?.person_name && (
+                        <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-blue-600/90 text-white shadow-sm backdrop-blur-md">
+                          👤 {event.metadata.person_name}
+                        </span>
+                      )}
+                      {event.metadata?.plate_text && (
+                        <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-indigo-600/90 text-white shadow-sm backdrop-blur-md">
+                          🪧 {event.metadata.plate_text}
+                        </span>
+                      )}
                     </div>
 
                     {/* Bottom Info Gradient */}

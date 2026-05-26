@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Server, Plus, Edit, Trash2, X, Cpu, HardDrive, Search, LayoutList, LayoutGrid } from 'lucide-react';
+import { Server, Plus, Edit, Trash2, X, Cpu, HardDrive, Search, LayoutList, LayoutGrid, RefreshCw } from 'lucide-react';
 import { supabase, type AIServer } from '../lib/supabase';
 
 export default function AIServerManagement() {
@@ -8,6 +8,10 @@ export default function AIServerManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingServer, setEditingServer] = useState<AIServer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Bulk select
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     ip_address: '',
@@ -56,7 +60,7 @@ export default function AIServerManagement() {
 
   const loadServers = async () => {
     const { data } = await supabase.from('ai_servers').select('*').order('created_at', { ascending: false });
-    if (data) setServers(data);
+    if (data) { setServers(data); setSelectedIds(new Set()); }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -112,6 +116,26 @@ export default function AIServerManagement() {
       memory_gb: server.memory_gb || 16,
     });
     setShowModal(true);
+  };
+
+  // ── Bulk helpers ──────────────────────────────────────────────────────────
+  const filteredServers = servers.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.ip_address.includes(searchQuery)
+  );
+  const allSelected    = filteredServers.length > 0 && filteredServers.every(s => selectedIds.has(s.id));
+  const toggleSelect    = (id: string) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleSelectAll = () => setSelectedIds(allSelected ? new Set() : new Set(filteredServers.map(s => s.id)));
+  const bulkDelete = async () => {
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} server(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      await supabase.from('ai_servers').delete().in('id', [...selectedIds]);
+      setSelectedIds(new Set());
+      await loadServers();
+    } catch (err: any) { alert(`Bulk delete failed: ${err.message}`); }
+    finally { setBulkDeleting(false); }
   };
 
   const resetForm = () => {
@@ -187,43 +211,94 @@ export default function AIServerManagement() {
             Add Server
           </button>
         </div>
-      </div>
+        </div>
+
+      {/* ── Bulk Action Toolbar ── */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-red-50 dark:bg-red-950/40
+                        border border-red-200 dark:border-red-800 rounded-xl
+                        animate-in slide-in-from-top-2 duration-200">
+          <span className="text-sm font-semibold text-red-700 dark:text-red-400">
+            {selectedIds.size} server{selectedIds.size > 1 ? 's' : ''} selected
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400
+                       bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                       rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+          >
+            Clear
+          </button>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkDeleting}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white
+                       bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition-all
+                       shadow-sm shadow-red-600/20 active:scale-95"
+          >
+            {bulkDeleting
+              ? <><RefreshCw size={13} className="animate-spin" /> Deleting…</>
+              : <><Trash2 size={13} /> Delete {selectedIds.size}</>}
+          </button>
+        </div>
+      )}
 
       <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6" : "space-y-4"}>
         {viewMode === 'list' ? (
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <table className="w-full text-left">
+            <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Name</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">IP Address</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Status</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Specs</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Actions</th>
+                  <th className="p-4 w-10 border border-slate-200 dark:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                      title={allSelected ? 'Deselect all' : 'Select all'}
+                    />
+                  </th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Name</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">IP Address</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Status</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Specs</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {servers.filter(s =>
-                  s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  s.ip_address.includes(searchQuery)
-                ).map((server) => (
-                  <tr key={server.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                    <td className="p-4 font-medium text-slate-900 dark:text-white flex items-center gap-3">
-                      <div className="bg-green-100 p-2 rounded-lg">
-                        <Server className="text-green-600" size={18} />
-                      </div>
-                      {server.name}
+                {filteredServers.map((server) => {
+                  const isSelected = selectedIds.has(server.id);
+                  return (
+                  <tr key={server.id} className={`transition-colors ${
+                    isSelected ? 'bg-red-50 dark:bg-red-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                  }`}>
+                    <td className="p-4 border border-slate-100 dark:border-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(server.id)}
+                        className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                      />
                     </td>
-                    <td className="p-4 text-slate-600 dark:text-slate-400">{server.ip_address}:{server.port}</td>
-                    <td className="p-4">
+                    <td className="p-4 font-medium text-slate-900 dark:text-white border border-slate-100 dark:border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-green-100 p-2 rounded-lg">
+                          <Server className="text-green-600" size={18} />
+                        </div>
+                        {server.name}
+                      </div>
+                    </td>
+                    <td className="p-4 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700">{server.ip_address}:{server.port}</td>
+                    <td className="p-4 border border-slate-100 dark:border-slate-700">
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(server.status)}`}>
                         {server.status}
                       </span>
                     </td>
-                    <td className="p-4 text-sm text-slate-500">
+                    <td className="p-4 text-sm text-slate-500 border border-slate-100 dark:border-slate-700">
                       {server.gpu_model ? `${server.gpu_model}, ` : ''}{server.cpu_cores} cores, {server.memory_gb}GB RAM
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 border border-slate-100 dark:border-slate-700">
                       <div className="flex gap-2">
                         <button onClick={() => handleEdit(server)} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600">
                           <Edit size={16} />
@@ -234,7 +309,8 @@ export default function AIServerManagement() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

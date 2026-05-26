@@ -34,6 +34,9 @@ export default function StreamPlayer({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const hlsRef = useRef<Hls | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const MAX_RETRIES = 10;
 
   // Recording state
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -116,84 +119,130 @@ export default function StreamPlayer({
     return () => cancelAnimationFrame(animationFrameId);
   }, [detections]);
 
+  // Derive correct HLS URL from the RTSP stream URL
+  // MediaMTX registers streams under the path name configured in mediamtx.yml
+  // e.g. rtsp://...@ip/... -> the path key in mediamtx is set in DB as the stream_url
+  // If the DB stream_url is already an HLS/HTTP URL, use it directly.
+  // If it's an RTSP URL, we need the MediaMTX path name (e.g. 'cam1', 'gate')
+  // which is stored in the camera's stream_url field as http://localhost:8888/<pathName>
+  // OR the camera stream_url might be the raw RTSP url in which case we use cameraName slug.
+  const streamUrl = (() => {
+    if (!url) return '';
+    // Already an HLS/HTTP URL — use directly
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      // Ensure it ends with /index.m3u8 for MediaMTX HLS
+      if (url.includes('index.m3u8')) return url;
+      // MediaMTX HLS URL like http://localhost:8888/cam1
+      return url.replace(/\/$/, '') + '/index.m3u8';
+    }
+    // RTSP URL — extract just the path segment after the last slash before query string
+    // e.g. rtsp://admin:pass@192.168.1.1:554/cam/realmonitor?... -> use cameraName slug
+    // IMPORTANT: MediaMTX path keys use HYPHENS (e.g. "car-park"), not underscores.
+    const slug = cameraName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'camera';
+    return `http://localhost:8888/${slug}/index.m3u8`;
+  })();
+
   useEffect(() => {
     let hls: Hls | null = null;
     const video = videoRef.current;
+    retryCountRef.current = 0;
 
-    if (!url || !video) return;
+    if (!streamUrl || !video) return;
 
-    // Reset state
-    setError(null);
-    setLoading(true);
+    const initHls = () => {
+      // Clean up previous instance
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
 
-    const checkPlay = () => {
-      setLoading(false);
-      if (autoPlay) {
-        video.play().catch(e => {
-          console.warn("Autoplay blocked:", e);
-          // Ensure muted if blocked
-          video.muted = true;
-          video.play().catch(e2 => console.error("Retry play failed:", e2));
+      setError(null);
+      setLoading(true);
+
+      const checkPlay = () => {
+        setLoading(false);
+        if (autoPlay) {
+          video.play().catch(() => {
+            video.muted = true;
+            video.play().catch(e2 => console.error('Retry play failed:', e2));
+          });
+        }
+      };
+
+      if (Hls.isSupported()) {
+        hls = new Hls({
+          debug: false,
+          enableWorker: true,
+          lowLatencyMode: true,
+          liveSyncDurationCount: 1,
+          liveMaxLatencyDurationCount: 2,
+          maxLiveSyncPlaybackRate: 2.0,
+          backBufferLength: 30,
+          maxBufferLength: 8,
+          maxMaxBufferLength: 16,
+          fragLoadingTimeOut: 8000,
+          manifestLoadingTimeOut: 8000,
+          levelLoadingTimeOut: 8000,
         });
+        hlsRef.current = hls;
+
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => checkPlay());
+
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                if (retryCountRef.current < MAX_RETRIES) {
+                  retryCountRef.current++;
+                  // Exponential back-off: 4s, 6s, 8s... up to 12s max
+                  // Gives MediaMTX (sourceOnDemandStartTimeout: 25s) time to connect.
+                  const delay = Math.min(4000 + retryCountRef.current * 2000, 12000);
+                  console.warn(`HLS network error — retry ${retryCountRef.current}/${MAX_RETRIES} in ${delay/1000}s (stream: ${streamUrl})`);
+                  retryTimerRef.current = setTimeout(() => initHls(), delay);
+                } else {
+                  setError(`No stream signal. Check camera & streaming server.`);
+                  setLoading(false);
+                }
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls?.recoverMediaError();
+                break;
+              default:
+                hls?.destroy();
+                setError(`Stream error: ${data.details}`);
+                setLoading(false);
+                break;
+            }
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', checkPlay);
+        video.addEventListener('error', () => {
+          setError('Native playback error');
+          setLoading(false);
+        });
+      } else {
+        setError('HLS not supported in this browser.');
+        setLoading(false);
       }
     };
 
-    if (Hls.isSupported()) {
-      hls = new Hls({
-        debug: false,
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90
-      });
-      hlsRef.current = hls;
-
-      hls.loadSource(url);
-      hls.attachMedia(video);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        checkPlay();
-      });
-
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          console.error("HLS Fatal Error:", data);
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hls?.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls?.recoverMediaError();
-              break;
-            default:
-              hls?.destroy();
-              setError(`Stream Error: ${data.details}`);
-              break;
-          }
-        }
-      });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native Safari HLS
-      video.src = url;
-      video.addEventListener('loadedmetadata', checkPlay);
-      video.addEventListener('error', () => {
-        setError("Native Playback Error");
-        setLoading(false);
-      });
-    } else {
-      setError("HLS is not supported in this browser.");
-      setLoading(false);
-    }
+    // Give MediaMTX a 2-second head-start to initiate the RTSP connection
+    // before HLS.js requests the manifest (avoids the first-request 404).
+    const startTimer = setTimeout(() => initHls(), 2000);
 
     return () => {
-      if (hls) {
-        hls.destroy();
-      }
-      if (video) {
-        video.removeAttribute('src');
-        video.load();
-      }
+      clearTimeout(startTimer);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (hls) hls.destroy();
+      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+      if (video) { video.removeAttribute('src'); video.load(); }
     };
-  }, [url]);
+  }, [streamUrl]);
 
   // Sync muted prop
   useEffect(() => {
@@ -282,20 +331,6 @@ export default function StreamPlayer({
     }
   };
 
-  // RTSP / Bad URL Handling UI
-  if (url.startsWith('rtsp')) {
-    return (
-      <div className={`relative bg-slate-900 w-full h-full flex flex-col items-center justify-center text-slate-400 p-4 font-mono text-center ${className}`}>
-        <AlertCircle size={48} className="mb-4 text-red-500 opacity-50" />
-        <p className="text-sm font-semibold text-red-400">Stream Unavailable</p>
-        <div className="mt-4 p-2 bg-slate-800 rounded text-[10px] text-slate-400 max-w-xs text-center">
-          <p className="mb-1"><strong>Note:</strong> Browsers cannot play RTSP directly.</p>
-          <p>Use HLS URL: <code>http://localhost:8888/dahua/index.m3u8</code></p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={`relative bg-black w-full h-full overflow-hidden ${className}`}>
       <video
@@ -321,9 +356,43 @@ export default function StreamPlayer({
 
       {/* Error Overlay */}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 text-red-400 p-4 text-center z-20">
-          <AlertCircle size={32} className="mb-2" />
-          <p className="text-xs font-mono">{error}</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 text-red-400 p-4 text-center z-20 gap-3">
+          <AlertCircle size={28} className="mb-1" />
+          <p className="text-xs font-mono max-w-[200px] leading-relaxed">{error}</p>
+          <button
+            onClick={() => {
+              retryCountRef.current = 0;
+              setError(null);
+              setLoading(true);
+              // Re-trigger by re-running the effect
+              const video = videoRef.current;
+              if (video) { video.removeAttribute('src'); video.load(); }
+              if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+              // Force re-init
+              const hls = new Hls({
+                lowLatencyMode: true,
+                liveSyncDurationCount: 1,
+                liveMaxLatencyDurationCount: 2,
+                maxLiveSyncPlaybackRate: 2.0,
+              });
+              hlsRef.current = hls;
+              if (video) {
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                  setLoading(false);
+                  video.muted = muted;
+                  video.play().catch(() => { video.muted = true; video.play(); });
+                });
+                hls.on(Hls.Events.ERROR, (_, d) => {
+                  if (d.fatal) { setError('Stream unavailable. Ensure the streaming server is running.'); setLoading(false); }
+                });
+              }
+            }}
+            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg border border-white/20 transition-colors"
+          >
+            ↺ Retry
+          </button>
         </div>
       )}
 

@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchRole(session.user.id);
+        fetchRole(session.user.id, session.user.email ?? '');
       } else {
         setLoading(false);
       }
@@ -35,7 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchRole(session.user.id);
+        // Pass email directly from session — avoids reading stale React state
+        fetchRole(session.user.id, session.user.email ?? '');
       } else {
         setRole(null);
         setLoading(false);
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchRole = async (userId: string) => {
+  const fetchRole = async (userId: string, email: string) => {
     try {
       // First, try to get the existing role
       const { data, error } = await supabase
@@ -72,11 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const newRole = (count === 0) ? 'admin' : 'viewer';
 
         // Try to create the profile on the fly if trigger failed
+        // Use the `email` parameter (from session) — not the React state closure
         const { data: newProfile } = await supabase
           .from('user_profiles')
           .upsert({
             id: userId,
-            email: user?.email || '',
+            email: email,
             role: newRole
           })
           .select()

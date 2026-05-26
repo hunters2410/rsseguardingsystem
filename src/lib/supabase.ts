@@ -125,12 +125,52 @@ export type SystemSettings = {
 
 export type AlertRule = {
   id: string;
-  camera_id: string | null; // null = global rule
-  enabled_objects: string[]; // Array of object types to trigger on
-  disabled_objects: string[]; // Array of objects to exclude
+  camera_id: string | null;
+  enabled_objects: string[];
+  disabled_objects: string[];
   mode: 'whitelist' | 'blacklist';
   apply_to_zones_only: boolean;
   confidence_threshold: number;
+  schedule_enabled: boolean;
+  schedule_start: string;   // "HH:MM" e.g. "19:00"
+  schedule_end: string;     // "HH:MM" e.g. "06:00"
+  schedule_days: string[];  // ["Mon","Tue",...]
   created_at: string;
   updated_at: string;
+};
+
+// Known Faces Library — used by unknown_face_detection
+export type KnownFace = {
+  id: string;
+  name: string;
+  role: string;                  // 'employee' | 'vip' | 'contractor' | 'blacklist'
+  department?: string;
+  photo_url: string;             // Primary/profile photo
+  notes?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Virtual join field (loaded separately)
+  photos?: KnownFacePhoto[];
+};
+
+// Multiple angles per person — minimum 5 for 90%+ accuracy
+export type KnownFacePhoto = {
+  id: string;
+  known_face_id: string;
+  photo_url: string;
+  angle: 'front' | 'left_45' | 'right_45' | 'left_profile' | 'right_profile' | 'angled_down' | 'other';
+  created_at: string;
+};
+
+// Known Color Profiles — saved dress code presets reusable across models
+export type KnownColorProfile = {
+  id: string;
+  name: string;                  // e.g. 'Security Uniform', 'Construction Hi-Vis'
+  required_colors: string[];     // Colors that must be present
+  prohibited_colors: string[];   // Colors that must NOT be present
+  region: 'top' | 'bottom' | 'full';
+  coverage: number;              // 0.05 - 0.50
+  cooldown: number;              // seconds
+  created_at: string;
 };

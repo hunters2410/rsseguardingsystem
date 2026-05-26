@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { Camera, Server, Brain, AlertCircle, Activity, TrendingUp, Bell, X, ArrowRight } from 'lucide-react';
+import { Camera, Server, Brain, Activity, Bell, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { supabase } from '../lib/supabase';
 import { SimpleBarChart, SimplePieChart } from './DashboardCharts';
@@ -22,7 +23,8 @@ type EventNotification = {
   created_at: string;
 };
 
-export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void }) {
+export default function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<Stats>({
     totalCameras: 0,
     onlineCameras: 0,
@@ -36,7 +38,6 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) 
   const [distributionData, setDistributionData] = useState<{ label: string; value: number; color: string }[]>([]);
   const [notifications, setNotifications] = useState<EventNotification[]>([]);
   const lastEventIdRef = useRef<string>('');
-  const [countStats, setCountStats] = useState({ vehiclesToday: 0, peopleToday: 0, hourlyActivity: [] as number[] });
 
   useEffect(() => {
     loadStats();
@@ -154,20 +155,13 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) 
         .gte('created_at', today.toISOString());
 
       if (events) {
-        const vehicles = events.filter(e => e.event_type === 'vehicle_detection').length;
-        const people = events.filter(e => e.event_type === 'person_detection').length;
-
         const hourly = new Array(24).fill(0);
         events.forEach(e => {
           const hour = new Date(e.created_at).getHours();
           hourly[hour]++;
         });
 
-        setCountStats({
-          vehiclesToday: vehicles,
-          peopleToday: people,
-          hourlyActivity: hourly
-        });
+        // Counting data loaded but state removed to fix layout
       }
     } catch (error) {
       console.error('Error loading counting data:', error);
@@ -204,7 +198,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) 
         .select('*')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       console.log('Checking for new events...', {
         latestEventId: latestEvent?.id,
@@ -290,24 +284,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) 
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <span className="text-sm font-medium">System Online</span>
         </div>
-        {/* Debug Test Button */}
-        <button
-          onClick={() => {
-            console.log('Test button clicked');
-            const testEvent: EventNotification = {
-              id: `test-${Date.now()}`,
-              event_type: 'person_detection',
-              confidence: 95,
-              camera_id: 'test-camera-123',
-              created_at: new Date().toISOString()
-            };
-            playBeep();
-            setNotifications(prev => [testEvent, ...prev].slice(0, 5));
-          }}
-          className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700"
-        >
-          Test Notification
-        </button>
+
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
@@ -330,33 +307,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) 
         })}
       </div>
 
-      {stats.unacknowledgedEvents > 0 && (
-        <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 border-2 border-red-300 dark:border-red-700 rounded-xl p-6 shadow-lg">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-red-600 rounded-full">
-                <AlertCircle className="text-white" size={28} />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-red-900 dark:text-red-100 mb-1">Unacknowledged Events</h3>
-                <p className="text-red-700 dark:text-red-300 text-sm">
-                  You have <span className="font-black text-2xl mx-1">{stats.unacknowledgedEvents}</span> unreviewed event{stats.unacknowledgedEvents !== 1 ? 's' : ''} requiring immediate attention.
-                </p>
-                <p className="text-red-600 dark:text-red-400 text-xs mt-2">
-                  ⚡ These events need to be reviewed and acknowledged
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => onNavigate?.('events')}
-              className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 whitespace-nowrap cursor-pointer"
-            >
-              View Events
-              <ArrowRight size={18} />
-            </button>
-          </div>
-        </div>
-      )}
+
 
       {/* Graphs Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -371,47 +322,7 @@ export default function Dashboard({ onNavigate }: { onNavigate?: (view: string) 
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 border border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-            <TrendingUp size={20} className="text-blue-600 dark:text-blue-400" />
-            System Status
-          </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-600 dark:text-slate-400">Camera Uptime</span>
-              <span className="font-semibold text-slate-900 dark:text-white">
-                {stats.totalCameras > 0 ? Math.round((stats.onlineCameras / stats.totalCameras) * 100) : 0}%
-              </span>
-            </div>
-            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-              <div
-                className="bg-green-500 h-2 rounded-full transition-all"
-                style={{
-                  width: `${stats.totalCameras > 0 ? (stats.onlineCameras / stats.totalCameras) * 100 : 0}%`,
-                }}
-              />
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 border border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-            <Activity size={20} className="text-purple-600 dark:text-purple-400" />
-            AI Processing
-          </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-600 dark:text-slate-400">Active AI Models</span>
-              <span className="font-semibold text-slate-900 dark:text-white">{stats.activeModels}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-600 dark:text-slate-400">Event Detection Rate</span>
-              <span className="font-semibold text-green-600 dark:text-green-400">Normal</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Event Notifications */}
       <div className="fixed top-4 right-4 z-50 space-y-3 max-w-sm pointer-events-none">

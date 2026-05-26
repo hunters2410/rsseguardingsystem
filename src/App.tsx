@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Toaster } from 'sonner';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Sidebar from './components/Sidebar';
@@ -18,16 +20,12 @@ import EventNotifications from './components/EventNotifications';
 import Manual from './components/Manual';
 import ZoneSettings from './components/ZoneSettings';
 import AlertConfiguration from './components/AlertConfiguration';
+import NumberPlatesLog from './components/NumberPlatesLog';
+import FaceLibrary from './components/FaceLibrary';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [activeView, setActiveView] = useState(() => {
-    return localStorage.getItem('activeView') || 'dashboard';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('activeView', activeView);
-  }, [activeView]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMinimized, setSidebarMinimized] = useState(() => {
@@ -39,40 +37,6 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem('sidebarMinimized', sidebarMinimized.toString());
   }, [sidebarMinimized]);
-
-  const renderView = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <Dashboard onNavigate={handleViewChange} />;
-      case 'cameras':
-        return <CameraManagement />;
-      case 'servers':
-        return <AIServerManagement />;
-      case 'models':
-        return <AIModelManagement />;
-      case 'monitoring':
-        return <LiveMonitoring />;
-      case 'events':
-        return <EventsMonitoring />;
-      case 'training':
-        return <TrainingManagement />;
-      case 'manual':
-        return <Manual />;
-      case 'settings':
-        return <Settings />;
-      case 'zones':
-        return <ZoneSettings />;
-      case 'alert-config':
-        return <AlertConfiguration />;
-      default:
-        return <Dashboard />;
-    }
-  };
-
-  const handleViewChange = (view: string) => {
-    setActiveView(view);
-    setSidebarOpen(false);
-  };
 
   if (loading) {
     return (
@@ -95,8 +59,6 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex">
       <Sidebar
-        activeView={activeView}
-        onViewChange={handleViewChange}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         isMinimized={sidebarMinimized}
@@ -105,11 +67,24 @@ function AppContent() {
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <Header
           onMenuClick={() => setSidebarOpen(true)}
-          title={activeView === 'dashboard' ? 'Overview' : activeView.charAt(0).toUpperCase() + activeView.slice(1)}
-          onNavigate={handleViewChange}
         />
         <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-100 dark:bg-slate-900">
-          {renderView()}
+          <Routes>
+            <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+            <Route path="/cameras" element={<ErrorBoundary><CameraManagement /></ErrorBoundary>} />
+            <Route path="/servers" element={<ErrorBoundary><AIServerManagement /></ErrorBoundary>} />
+            <Route path="/models" element={<ErrorBoundary><AIModelManagement /></ErrorBoundary>} />
+            <Route path="/monitoring" element={<ErrorBoundary><LiveMonitoring /></ErrorBoundary>} />
+            <Route path="/events" element={<ErrorBoundary><EventsMonitoring /></ErrorBoundary>} />
+            <Route path="/training" element={<ErrorBoundary><TrainingManagement /></ErrorBoundary>} />
+            <Route path="/manual" element={<ErrorBoundary><Manual /></ErrorBoundary>} />
+            <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+            <Route path="/zones" element={<ErrorBoundary><ZoneSettings /></ErrorBoundary>} />
+            <Route path="/alert-config" element={<ErrorBoundary><AlertConfiguration /></ErrorBoundary>} />
+            <Route path="/plates" element={<ErrorBoundary><NumberPlatesLog /></ErrorBoundary>} />
+            <Route path="/face-library" element={<ErrorBoundary><FaceLibrary /></ErrorBoundary>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </div>
         <Footer />
         <EventNotifications />
@@ -118,16 +93,18 @@ function AppContent() {
   );
 }
 
-import { Toaster } from 'sonner';
+
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-        <Toaster position="top-right" richColors theme="system" closeButton />
-      </AuthProvider>
-    </ThemeProvider>
+    <Router>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppContent />
+          <Toaster position="top-right" richColors theme="system" closeButton />
+        </AuthProvider>
+      </ThemeProvider>
+    </Router>
   );
 }
 

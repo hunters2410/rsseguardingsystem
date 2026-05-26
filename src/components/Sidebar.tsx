@@ -1,28 +1,57 @@
-import { Camera, Server, Brain, Bell, Monitor, Activity, X, ChevronLeft, ChevronRight, Database, Settings, Book, ScanLine } from 'lucide-react';
+import { Camera, Server, Brain, Bell, Monitor, Activity, X, ChevronLeft, ChevronRight, Database, Settings, Book, ScanLine, Car, Users, LayoutDashboard, ShieldAlert } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 
 type SidebarProps = {
-  activeView: string;
-  onViewChange: (view: string) => void;
   isOpen: boolean;
   onClose: () => void;
   isMinimized: boolean;
   onToggleMinimize: () => void;
 };
 
-export default function Sidebar({ activeView, onViewChange, isOpen, onClose, isMinimized, onToggleMinimize }: SidebarProps) {
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Monitor },
-    { id: 'cameras', label: 'Cameras', icon: Camera },
-    { id: 'servers', label: 'AI Servers', icon: Server },
-    { id: 'models', label: 'AI Models', icon: Brain },
-    { id: 'zones', label: 'Zones & Boundaries', icon: ScanLine },
-    { id: 'alert-config', label: 'Alert Configuration', icon: Bell },
-    { id: 'training', label: 'Training & Datasets', icon: Database },
-    { id: 'events', label: 'Events', icon: Activity },
-    { id: 'monitoring', label: 'Live Monitor', icon: Monitor },
-    { id: 'manual', label: 'Setup Guide', icon: Book },
-    { id: 'settings', label: 'Settings', icon: Settings },
-  ];
+const NAV_GROUPS = [
+  {
+    label: 'Overview',
+    items: [
+      { id: 'dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
+      { id: 'monitoring', label: 'Live Monitor',  icon: Monitor },
+    ],
+  },
+  {
+    label: 'Infrastructure',
+    items: [
+      { id: 'cameras', label: 'Cameras',    icon: Camera  },
+      { id: 'servers', label: 'AI Servers', icon: Server  },
+      { id: 'models',  label: 'AI Models',  icon: Brain   },
+    ],
+  },
+  {
+    label: 'AI Detection',
+    items: [
+      { id: 'zones',        label: 'Zones & Boundaries',   icon: ScanLine    },
+      { id: 'alert-config', label: 'Alert Configuration',  icon: Bell        },
+      { id: 'face-library', label: 'Face & Color Library', icon: Users       },
+      { id: 'training',     label: 'Training & Datasets',  icon: Database    },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { id: 'events',  label: 'Events',         icon: Activity      },
+      { id: 'plates',  label: 'License Plates', icon: Car           },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { id: 'manual',   label: 'Setup Guide', icon: Book     },
+      { id: 'settings', label: 'Settings',    icon: Settings },
+    ],
+  },
+];
+
+export default function Sidebar({ isOpen, onClose, isMinimized, onToggleMinimize }: SidebarProps) {
+  const location = useLocation();
+  const activeView = location.pathname.substring(1) || 'dashboard';
 
   return (
     <>
@@ -37,15 +66,26 @@ export default function Sidebar({ activeView, onViewChange, isOpen, onClose, isM
           } ${isMinimized ? 'w-20' : 'w-64'
           }`}
       >
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 relative h-16 flex items-center justify-between">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 relative h-14 flex items-center justify-between">
           {!isMinimized && (
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-red-600 flex items-center justify-center font-bold text-white">EG</div>
-              <span className="font-bold text-lg text-slate-900 dark:text-white">E-Guarding</span>
+              <img
+                src="/Real Star Security.jpg"
+                alt="Real Star Security"
+                className="h-10 w-auto object-contain"
+              />
+              <span className="font-semibold text-sm text-slate-900 dark:text-white">E-Guarding</span>
             </div>
           )}
           {isMinimized && (
-            <div className="w-8 h-8 rounded bg-red-600 flex items-center justify-center font-bold text-white mx-auto">EG</div>
+            <div className="w-10 h-10 mx-auto overflow-hidden rounded-lg">
+              <img
+                src="/Real Star Security.jpg"
+                alt="Real Star Security"
+                className="w-full h-full object-cover"
+              />
+            </div>
           )}
 
           <button
@@ -62,25 +102,42 @@ export default function Sidebar({ activeView, onViewChange, isOpen, onClose, isM
           </button>
         </div>
 
-        <nav className="flex-1 p-4 overflow-y-auto">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onViewChange(item.id)}
-                title={isMinimized ? item.label : undefined}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-2 transition-all ${activeView === item.id
-                  ? 'bg-red-600 text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                  } ${isMinimized ? 'justify-center' : ''
-                  }`}
-              >
-                <Icon size={20} />
-                {!isMinimized && <span className="font-medium">{item.label}</span>}
-              </button>
-            );
-          })}
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-1">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="mb-1">
+              {/* Category label — hidden when minimised */}
+              {!isMinimized && (
+                <p className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400 select-none">
+                  {group.label}
+                </p>
+              )}
+              {isMinimized && (
+                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+              )}
+
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeView === item.id || (item.id === 'dashboard' && activeView === '');
+                return (
+                  <Link
+                    key={item.id}
+                    to={item.id === 'dashboard' ? '/' : `/${item.id}`}
+                    onClick={onClose}
+                    title={isMinimized ? item.label : undefined}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg mb-0.5 transition-all text-sm ${
+                      isActive
+                        ? 'bg-red-600 text-white shadow-md'
+                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                    } ${isMinimized ? 'justify-center' : ''}`}
+                  >
+                    <Icon size={17} />
+                    {!isMinimized && <span className="font-medium text-[14px]">{item.label}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">

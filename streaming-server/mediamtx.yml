@@ -7,9 +7,9 @@
 # Global settings -> General
 
 # Verbosity of the program; available values are "error", "warn", "info", "debug".
-logLevel: debug
+logLevel: info
 # Destinations of log messages; available values are "stdout", "file" and "syslog".
-logDestinations: [stdout]
+logDestinations: [stdout, file]
 # When destination is "stdout" or "file", emit logs in structured format (JSON).
 logStructured: no
 # When "file" is in logDestinations, this is the file which will receive logs.
@@ -142,7 +142,7 @@ authJWTClaimKey: mediamtx_permissions
 authJWTExclude: []
 # allow passing the JWT through query parameters of HTTP requests (i.e. ?jwt=JWT).
 # This is a security risk and will be disabled by default in the future.
-authJWTInHTTPQuery: true
+authJWTInHTTPQuery: false
 
 ###############################################
 # Global settings -> Control API
@@ -334,12 +334,12 @@ hlsAllowOrigins: ['*']
 hlsTrustedProxies: []
 # By default, HLS is generated only when requested by a user.
 # This option allows to generate it always, avoiding the delay between request and generation.
-hlsAlwaysRemux: no
+hlsAlwaysRemux: yes
 # Variant of the HLS protocol to use. Available options are:
 # * mpegts - uses MPEG-TS segments, for maximum compatibility.
 # * fmp4 - uses fragmented MP4 segments, more efficient.
 # * lowLatency - uses Low-Latency HLS.
-hlsVariant: lowLatency
+hlsVariant: fmp4
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
@@ -365,7 +365,7 @@ hlsSegmentMaxSize: 50M
 hlsDirectory: ''
 # The muxer will be closed when there are no
 # reader requests and this amount of time has passed.
-hlsMuxerCloseAfter: 60s
+hlsMuxerCloseAfter: 120s
 
 ###############################################
 # Global settings -> WebRTC server
@@ -754,33 +754,76 @@ pathDefaults:
 # for example "~^(test1|test2)$" will match both "test1" and "test2",
 # for example "~^prefix" will match all paths that start with "prefix".
 paths:
-  # example:
-  # my_camera:
-  #   source: rtsp://my_camera
-
-  # Settings under path "all_others" are applied to all paths that
-  # do not match another entry.
-  all_others:
-
-  ###############################################
-  # EXAMPLE CAMERA SETUP
-  # 1. Rename 'cam1' to whatever you want (e.g., 'front_gate')
-  # 2. Replace the 'source' URL with your real Camera's RTSP link.
-  # 3. Restart 'npm run stream'.
-  # 4. In the Web App, use URL: http://localhost:8888/cam1
-
-  ###############################################
-  cam1:
-    source: rtsp://admin:%40Bc24680@192.168.1.120:37777/stream1
+  # ── Car Park 2 (192.168.1.123) ───────────────────────────────
+  car-park-2:
+    source: rtsp://admin:%40Bc24680@192.168.1.123:554/cam/realmonitor?channel=1&subtype=0
     rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
 
-  ###############################################
-  # USER DAHUA CAMERA
-  # Replace credentials and IP below with your actual details.
-  # Then in the App, use URL: http://localhost:8888/dahua
-  ###############################################
-  dahua:
-    source: rtsp://admin:%40Bc24680@192.168.1.120:37777/cam/realmonitor?channel=1&subtype=0
+  # ── Center (192.168.1.125) ───────────────────────────────────
+  center:
+    source: rtsp://admin:%40Bc24680@192.168.1.125:554/cam/realmonitor?channel=1&subtype=0
     rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
+
+  # ── Car Park (192.168.1.126) ─────────────────────────────────
+  car-park:
+    source: rtsp://admin:%40Bc24680@192.168.1.126:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
+
+  # ── Control Room (192.168.1.128) ─────────────────────────────
+  control-room:
+    source: rtsp://admin:%40Bc24680@192.168.1.128:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
+
+  # ── Control Room Passage (192.168.1.122) ─────────────────────
+  control-room-passage:
+    source: rtsp://admin:%40Bc24680@192.168.1.122:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
+
+  # ── Other / Reception (192.168.1.131) ───────────────────────
+  other:
+    source: rtsp://admin:%40Bc24680@192.168.1.131:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
+
+  # ── Front Gate (192.168.1.120) ───────────────────────────────
+  front-gate:
+    source: rtsp://admin:%40Bc24680@192.168.1.120:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
+
+  # ── Gate (192.168.1.129) ─────────────────────────────────────
+  gate:
+    source: rtsp://admin:%40Bc24680@192.168.1.129:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
+
+  # ── Gate Outside (192.168.1.135) — currently offline ─────────
+  gate-outside:
+    source: rtsp://admin:%40Bc24680@192.168.1.135:554/cam/realmonitor?channel=1&subtype=0
+    rtspTransport: tcp
+    sourceOnDemand: yes
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 30s
 
 

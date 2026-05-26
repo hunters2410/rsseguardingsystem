@@ -1,1 +1,62 @@
-{"itemCount":6,"pageCount":1,"items":[{"name":"cam1","confName":"cam1","source":{"type":"rtspSource","id":""},"ready":false,"readyTime":null,"tracks":[],"bytesReceived":0,"bytesSent":0,"readers":[]},{"name":"camera-1","confName":"camera-1","source":{"type":"rtspSource","id":""},"ready":true,"readyTime":"2026-01-30T10:39:01.2272627+02:00","tracks":["H264"],"bytesReceived":60035467,"bytesSent":0,"readers":[{"type":"hlsMuxer","id":""}]},{"name":"dahua","confName":"dahua","source":{"type":"rtspSource","id":""},"ready":false,"readyTime":null,"tracks":[],"bytesReceived":0,"bytesSent":0,"readers":[]},{"name":"gate-2","confName":"gate-2","source":{"type":"rtspSource","id":""},"ready":false,"readyTime":null,"tracks":[],"bytesReceived":0,"bytesSent":0,"readers":[]},{"name":"gate-3","confName":"gate-3","source":{"type":"rtspSource","id":""},"ready":true,"readyTime":"2026-01-30T10:46:07.2933004+02:00","tracks":["H265"],"bytesReceived":8878835,"bytesSent":0,"readers":[{"type":"hlsMuxer","id":""}]},{"name":"gate-4","confName":"gate-4","source":{"type":"rtspSource","id":""},"ready":true,"readyTime":"2026-01-30T10:53:43.8634953+02:00","tracks":["H265"],"bytesReceived":7982408,"bytesSent":0,"readers":[]}]}
+[
+  {
+    "name": "all_others",
+    "source": "publisher",
+    "sourceProtocol": null
+  },
+  {
+    "name": "cam1",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.120:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": null
+  },
+  {
+    "name": "car-park",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.126:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  },
+  {
+    "name": "car-park-2",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.123:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  },
+  {
+    "name": "center",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.125:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  },
+  {
+    "name": "control-room",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.128:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  },
+  {
+    "name": "control-room-passage",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.122:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  },
+  {
+    "name": "dahua",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.120:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": null
+  },
+  {
+    "name": "front-gate",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.120:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  },
+  {
+    "name": "gate",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.120:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": null
+  },
+  {
+    "name": "gate-outside",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.135:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  },
+  {
+    "name": "reception",
+    "source": "rtsp://admin:%40Bc24680@192.168.1.131:554/cam/realmonitor?channel=1&subtype=0",
+    "sourceProtocol": "tcp"
+  }
+]

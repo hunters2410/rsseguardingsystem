@@ -1,542 +1,800 @@
 import { useEffect, useState } from 'react';
-import { Camera, Plus, Edit, Trash2, X, Brain, Search, LayoutList, LayoutGrid, ShieldCheck, ShieldAlert, Globe, Settings2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import {
+  Camera, Plus, Edit, Trash2, X, Brain, Search,
+  RefreshCw, Wifi, WifiOff, Settings2, Eye, EyeOff,
+  LayoutGrid, LayoutList, ShieldCheck, ShieldAlert
+} from 'lucide-react';
 import CameraModelAssignment from './CameraModelAssignment';
 import { supabase, type Camera as CameraType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
+/* ─── tiny helpers ─────────────────────────────────────────────────────────── */
+const STATUS_MAP: Record<string, { bg: string; dot: string; label: string }> = {
+  online:   { bg: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30', dot: 'bg-emerald-500', label: 'Online' },
+  offline:  { bg: 'bg-rose-500/10    text-rose-600    border-rose-500/30',    dot: 'bg-rose-500',    label: 'Offline' },
+  disabled: { bg: 'bg-slate-400/10  text-slate-500  border-slate-400/30',    dot: 'bg-slate-400',  label: 'Disabled' },
+};
+const statusInfo = (s: string) => STATUS_MAP[s] ?? STATUS_MAP.offline;
+
+const BRAND_PATHS: Record<string, string> = {
+  Dahua:     '/cam/realmonitor?channel=1&subtype=0',
+  Hikvision: '/Streaming/Channels/101',
+  Axis:      '/axis-media/media.amp',
+  Generic:   '/stream1',
+};
+
+const DEFAULT_FORM = {
+  name: '', location: '', brand: '', connection_type: 'rtsp',
+  stream_url: '', username: '', password: '',
+  ip_address: '192.168.1.120', port: 554,
+  rtsp_path: '/cam/realmonitor?channel=1&subtype=0',
+  resolution: '1920x1080', fps: 25, status: 'online',
+};
+
+/* ─── component ─────────────────────────────────────────────────────────────── */
 export default function CameraManagement() {
   const { role } = useAuth();
-  const [cameras, setCameras] = useState<CameraType[]>([]);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [showModal, setShowModal] = useState(false);
-  const [editingCamera, setEditingCamera] = useState<CameraType | null>(null);
-  const [activeConfigCamera, setActiveConfigCamera] = useState<CameraType | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const isAdmin = role === 'admin';
 
-  const [formData, setFormData] = useState({
-    name: '',
-    location: '',
-    brand: '',
-    connection_type: 'rtsp',
-    stream_url: '',
-    username: '',
-    password: '',
-    ip_address: '192.168.1.120',
-    port: 554,
-    resolution: '1920x1080',
-    fps: 25,
-    status: 'online',
-  });
+  const [cameras, setCameras]                 = useState<CameraType[]>([]);
+  const [search, setSearch]                   = useState('');
+  const [viewMode, setViewMode]               = useState<'grid' | 'list'>('list');
+  const [showModal, setShowModal]             = useState(false);
+  const [editingCamera, setEditingCamera]     = useState<CameraType | null>(null);
+  const [activeAI, setActiveAI]               = useState<CameraType | null>(null);
+  const [checking, setChecking]               = useState(false);
+  const [testing, setTesting]                 = useState(false);
+  const [testResult, setTestResult]           = useState<'success' | 'error' | null>(null);
+  const [testMsg, setTestMsg]                 = useState('');
+  const [showPassword, setShowPassword]       = useState(false);
+  const [formData, setFormData]               = useState(DEFAULT_FORM);
+  const [saveAndAddAnother, setSaveAndAddAnother] = useState(false);
+  const [selectedIds, setSelectedIds]         = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting]       = useState(false);
 
-  useEffect(() => {
-    loadCameras();
-  }, []);
+  useEffect(() => { load(); }, []);
+  // Clear selection whenever the camera list reloads
+  useEffect(() => { setSelectedIds(new Set()); }, [cameras.length]);
 
-  const loadCameras = async () => {
+  /* ── data ── */
+  const load = async () => {
     const { data } = await supabase.from('cameras').select('*').order('created_at', { ascending: false });
     if (data) setCameras(data);
   };
 
-  // Check camera status by attempting to reach the IP address
-  const checkCameraStatus = async (camera: CameraType): Promise<'online' | 'offline'> => {
-    if (!camera.ip_address) return 'offline';
+  const checkAllStatus = async () => {
+    setChecking(true);
+    const updates: Promise<any>[] = [];
+    for (const cam of cameras) {
+      if (cam.status === 'disabled') continue;
+      const newStatus = cam.ip_address ? 'online' : 'offline';
+      if (newStatus !== cam.status)
+        updates.push(supabase.from('cameras').update({ status: newStatus }).eq('id', cam.id));
+    }
+    if (updates.length) { await Promise.all(updates); await load(); }
+    setChecking(false);
+  };
 
+  /* ── bulk select helpers ── */
+  const toggleSelect = (id: string) =>
+    setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+
+  const toggleSelectAll = () =>
+    setSelectedIds(
+      // allFilteredSelected is computed below after `filtered` is defined
+      filtered.length > 0 && filtered.every(c => selectedIds.has(c.id))
+        ? new Set()
+        : new Set(filtered.map(c => c.id))
+    );
+
+  const bulkDelete = async () => {
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} camera(s)? This also removes their events, zones, and rules.`)) return;
+    setBulkDeleting(true);
     try {
-      // Create a simple HTTP request to check if the camera is reachable
-      // Using a timeout to avoid long waits
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-      await fetch(`http://${camera.ip_address}:${camera.port || 554}`, {
-        method: 'HEAD',
-        mode: 'no-cors', // Allow cross-origin requests
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-      return 'online';
-    } catch (error) {
-      // If fetch fails, try a different approach - check if IP is valid format
-      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-      if (ipPattern.test(camera.ip_address)) {
-        // IP format is valid, assume online (since we can't reliably ping from browser)
-        return 'online';
-      }
-      return 'offline';
-    }
+      const ids = [...selectedIds];
+      await supabase.from('events').delete().in('camera_id', ids);
+      await supabase.from('camera_models').delete().in('camera_id', ids);
+      await supabase.from('camera_zones').delete().in('camera_id', ids);
+      await supabase.from('alert_rules').delete().in('camera_id', ids);
+      await supabase.from('cameras').delete().in('id', ids);
+      setSelectedIds(new Set());
+      await load();
+    } catch (err: any) { alert(`Bulk delete failed: ${err.message}`); }
+    finally { setBulkDeleting(false); }
   };
 
-  // Check all cameras status
-  const checkAllCamerasStatus = async () => {
-    setIsCheckingStatus(true);
-    const updates = [];
+  /* ── form helpers ── */
+  const patch = (partial: Partial<typeof formData>) => setFormData(f => ({ ...f, ...partial }));
 
-    for (const camera of cameras) {
-      if (camera.status !== 'disabled') {
-        const newStatus = await checkCameraStatus(camera);
-        if (newStatus !== camera.status) {
-          updates.push(
-            supabase.from('cameras').update({ status: newStatus }).eq('id', camera.id)
-          );
-        }
-      }
-    }
-
-    if (updates.length > 0) {
-      await Promise.all(updates);
-      await loadCameras();
-    }
-
-    setIsCheckingStatus(false);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const slug = formData.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-    const safePass = encodeURIComponent(formData.password).replace(/@/g, '%40');
-    const rtspSource = `rtsp://${formData.username}:${safePass}@${formData.ip_address}:${formData.port}/cam/realmonitor?channel=1&subtype=0`;
-    const hlsUrl = `http://localhost:8888/${slug}/index.m3u8`;
-
-    const finalData = {
-      ...formData,
-      location: rtspSource,
-      stream_url: hlsUrl,
-      updated_at: new Date().toISOString()
-    };
-
-    if (editingCamera) {
-      await supabase.from('cameras').update(finalData).eq('id', editingCamera.id);
-    } else {
-      await supabase.from('cameras').insert([finalData]);
-    }
-
-    resetForm();
-    loadCameras();
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this camera?')) {
-      await supabase.from('cameras').delete().eq('id', id);
-      loadCameras();
-    }
-  };
-
-  const handleEdit = (camera: CameraType) => {
-    setEditingCamera(camera);
-    let extractedIp = '';
-    let extractedPort = 554;
-
-    if (camera.location?.startsWith('rtsp')) {
-      try {
-        const urlParts = camera.location.split('@');
-        if (urlParts.length > 1) {
-          const hostPart = urlParts[1].split('/')[0];
-          const networkParts = hostPart.split(':');
-          extractedIp = networkParts[0];
-          if (networkParts.length > 1) {
-            extractedPort = parseInt(networkParts[1]);
-          }
-        }
-      } catch (e) {
-        console.error("Error parsing RTSP location", e);
-      }
-    }
-
-    setFormData({
-      name: camera.name,
-      location: camera.location,
-      brand: camera.brand,
-      connection_type: camera.connection_type,
-      stream_url: camera.stream_url,
-      username: camera.username || '',
-      password: camera.password || '',
-      ip_address: extractedIp || '192.168.1.120',
-      port: extractedPort || 554,
-      resolution: camera.resolution || '1920x1080',
-      fps: camera.fps || 25,
-      status: camera.status || 'online',
-    });
+  const openAdd = () => {
+    setEditingCamera(null);
+    setFormData(DEFAULT_FORM);
+    setTestResult(null); setTestMsg('');
     setShowModal(true);
   };
 
-  const resetForm = () => {
-    setShowModal(false);
-    setEditingCamera(null);
+  const openEdit = (cam: CameraType) => {
+    setEditingCamera(cam);
+    let ip = '', port = 554, path = '/cam/realmonitor?channel=1&subtype=0';
+    if (cam.location?.startsWith('rtsp')) {
+      try {
+        const after = cam.location.split('@')[1] ?? '';
+        const [host, ...rest] = after.split('/');
+        const [h, p] = host.split(':');
+        ip = h; port = p ? parseInt(p) : 554;
+        path = '/' + rest.join('/');
+      } catch {}
+    }
     setFormData({
-      name: '',
-      location: '',
-      brand: '',
-      connection_type: 'rtsp',
-      stream_url: '',
-      username: '',
-      password: '',
-      ip_address: '192.168.1.120',
-      port: 554,
-      resolution: '1920x1080',
-      fps: 25,
-      status: 'online',
+      name: cam.name, location: cam.location, brand: cam.brand,
+      connection_type: cam.connection_type, stream_url: cam.stream_url,
+      username: cam.username || '', password: cam.password || '',
+      ip_address: ip || '192.168.1.120', port,
+      rtsp_path: path || '/cam/realmonitor?channel=1&subtype=0',
+      resolution: cam.resolution || '1920x1080', fps: cam.fps || 25,
+      status: cam.status || 'online',
     });
+    setTestResult(null); setTestMsg('');
+    setShowModal(true);
   };
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'online': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
-      case 'offline': return 'bg-rose-500/10 text-rose-600 border-rose-500/20';
-      case 'disabled': return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
-      default: return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
+  const closeModal = () => { setShowModal(false); setEditingCamera(null); };
+
+  /* ── computed previews (update live as user types) ── */
+  const liveSlug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'camera-name';
+  const liveRtsp = (() => {
+    const safePass = encodeURIComponent(formData.password || '').replace(/@/g, '%40');
+    const safePath = formData.rtsp_path.startsWith('/') ? formData.rtsp_path : `/${formData.rtsp_path}`;
+    const user = formData.username ? `${formData.username}:${safePass}@` : '';
+    return `rtsp://${user}${formData.ip_address || '<ip>'}:${formData.port}${safePath}`;
+  })();
+  const liveHls = `http://localhost:8888/${liveSlug}/index.m3u8`;
+
+  /* ── CRUD ── */
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const slug = liveSlug;
+    const { rtsp_path, ...rest } = formData;
+    const payload = { ...rest, location: liveRtsp, stream_url: liveHls, updated_at: new Date().toISOString() };
+
+    if (editingCamera) await supabase.from('cameras').update(payload).eq('id', editingCamera.id);
+    else               await supabase.from('cameras').insert([payload]);
+
+    if (saveAndAddAnother && !editingCamera) {
+      setFormData(DEFAULT_FORM);
+      setTestResult(null); setTestMsg('');
+    } else {
+      closeModal();
+    }
+    load();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this camera? This also removes its events, zones, and rules.')) return;
+    try {
+      await supabase.from('events').delete().eq('camera_id', id);
+      await supabase.from('camera_models').delete().eq('camera_id', id);
+      await supabase.from('camera_zones').delete().eq('camera_id', id);
+      await supabase.from('alert_rules').delete().eq('camera_id', id);
+      const { error } = await supabase.from('cameras').delete().eq('id', id);
+      if (error) throw error;
+      load();
+    } catch (err: any) { alert(`Delete failed: ${err.message}`); }
+  };
+
+  const toggleStatus = async (cam: CameraType) => {
+    if (!isAdmin) return alert('Access Denied');
+    const ns = cam.status === 'disabled' ? 'offline' : 'disabled';
+    await supabase.from('cameras').update({ status: ns }).eq('id', cam.id);
+    load();
+  };
+
+  const testConnection = async () => {
+    setTesting(true); setTestResult(null); setTestMsg('');
+    try {
+      const safePass = encodeURIComponent(formData.password).replace(/@/g, '%40');
+      const safePath = formData.rtsp_path.startsWith('/') ? formData.rtsp_path : `/${formData.rtsp_path}`;
+      const rtspSource = `rtsp://${formData.username}:${safePass}@${formData.ip_address}:${formData.port}${safePath}`;
+
+      const { data, error } = await supabase.from('system_commands').insert({
+        command_type: 'test_camera_connection', status: 'pending',
+        payload: { stream_url: rtspSource, username: formData.username, password: formData.password }
+      }).select().single();
+
+      if (error) throw error;
+      if (!data) throw new Error('No command returned');
+
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        const { data: cmd } = await supabase.from('system_commands').select('*').eq('id', data.id).single();
+        if (cmd && cmd.status !== 'pending') {
+          clearInterval(poll); setTesting(false);
+          setTestResult(cmd.status === 'completed' ? 'success' : 'error');
+          setTestMsg(cmd.result || (cmd.status === 'completed' ? 'Connection successful' : 'Connection failed'));
+        } else if (attempts > 15) {
+          clearInterval(poll); setTesting(false);
+          setTestResult('error'); setTestMsg('Test timed out. AI server may be offline.');
+        }
+      }, 2000);
+    } catch (err: any) {
+      setTesting(false); setTestResult('error'); setTestMsg('Failed to start test.');
     }
   };
 
-  const toggleStatus = async (camera: CameraType) => {
-    if (role !== 'admin') return alert('Access Denied');
-    const newStatus = camera.status === 'disabled' ? 'offline' : 'disabled';
-    await supabase.from('cameras').update({ status: newStatus }).eq('id', camera.id);
-    loadCameras();
-  };
+  /* ── filtered list ── */
+  const filtered = cameras.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  // Derived from filtered — must be after it
+  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selectedIds.has(c.id));
 
-  const filteredCameras = cameras.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const totalPages = Math.ceil(filteredCameras.length / pageSize);
-  const paginatedCameras = filteredCameras.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize
-  );
+  /* ── counts ── */
+  const onlineCount  = cameras.filter(c => c.status === 'online').length;
+  const offlineCount = cameras.filter(c => c.status === 'offline').length;
 
+  /* ──────────────────────────────────────────────────────────────────────────
+     RENDER
+  ───────────────────────────────────────────────────────────────────────────── */
   return (
-    <div className="space-y-3 animate-in fade-in duration-500">
-      {/* Header Area */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm sticky top-0 z-10">
+    <div className="space-y-4 animate-in fade-in duration-300">
+
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3
+                      bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800
+                      rounded-2xl p-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-red-600 rounded-xl shadow-lg shadow-red-600/20">
+          <div className="p-2.5 bg-red-600 rounded-xl shadow-lg shadow-red-600/25">
             <Camera className="text-white" size={18} />
           </div>
           <div>
-            <h1 className="text-lg font-black text-slate-900 dark:text-white leading-none">Camera Management</h1>
-            <p className="text-[9px] text-slate-500 uppercase tracking-[2px] font-bold mt-1">Surveillance Nodes</p>
+            <h1 className="text-base font-bold text-slate-900 dark:text-white">Camera Management</h1>
+            <p className="text-xs text-slate-500 mt-0.5">{cameras.length} cameras · {onlineCount} online · {offlineCount} offline</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-48">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+          {/* Search */}
+          <div className="relative flex-1 sm:w-52">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
             <input
               type="text"
-              placeholder="Search fleet..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-[11px] focus:ring-2 focus:ring-red-500/20 transition-all dark:text-white h-8"
+              placeholder="Search cameras..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm
+                         focus:ring-2 focus:ring-red-500/20 focus:outline-none dark:text-white transition-all"
             />
           </div>
+
+          {/* View toggle */}
           <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl">
-            <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 shadow-sm text-red-600' : 'text-slate-400 hover:text-slate-600'}`}><LayoutList size={12} /></button>
-            <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 shadow-sm text-red-600' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={12} /></button>
+            <button
+              onClick={() => setViewMode('grid')}
+              title="Grid view"
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === 'grid'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm text-red-600'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              <LayoutGrid size={14} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              title="List view"
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === 'list'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm text-red-600'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              <LayoutList size={14} />
+            </button>
           </div>
-          {role === 'admin' && (
+
+          {isAdmin && (
             <>
               <button
-                onClick={checkAllCamerasStatus}
-                disabled={isCheckingStatus}
-                className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-blue-600/20 active:scale-95 h-8"
-                title="Check camera status"
+                onClick={checkAllStatus}
+                disabled={checking}
+                title="Refresh status"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300
+                           hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50"
               >
-                <RefreshCw size={12} className={isCheckingStatus ? 'animate-spin' : ''} />
-                {isCheckingStatus ? 'CHECKING...' : 'STATUS'}
+                <RefreshCw size={15} className={checking ? 'animate-spin' : ''} />
               </button>
-              <button onClick={() => setShowModal(true)} className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-red-600/20 active:scale-95 h-8">
-                <Plus size={12} /> NEW CAMERA
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white
+                           px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm
+                           shadow-red-600/20 active:scale-95 whitespace-nowrap"
+              >
+                <Plus size={15} /> Add Camera
               </button>
             </>
           )}
         </div>
       </div>
 
-      {/* Table Area */}
-      {viewMode === 'list' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-800 overflow-hidden shadow-lg">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-gradient-to-r from-slate-100 to-slate-50 dark:from-slate-950 dark:to-slate-900">
-              <tr className="border-b-2 border-slate-300 dark:border-slate-700">
-                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Camera size={14} className="text-red-600" />
-                    Camera Identity
+      {/* ── Bulk Action Toolbar ── */}
+      {isAdmin && selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-red-50 dark:bg-red-950/40
+                        border border-red-200 dark:border-red-800 rounded-2xl
+                        animate-in slide-in-from-top-2 duration-200">
+          <span className="text-sm font-semibold text-red-700 dark:text-red-400">
+            {selectedIds.size} camera{selectedIds.size > 1 ? 's' : ''} selected
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400
+                       bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                       rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+          >
+            Clear selection
+          </button>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkDeleting}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white
+                       bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition-all
+                       shadow-sm shadow-red-600/20 active:scale-95"
+          >
+            {bulkDeleting
+              ? <><RefreshCw size={13} className="animate-spin" /> Deleting…</>
+              : <><Trash2 size={13} /> Delete {selectedIds.size}</>}
+          </button>
+        </div>
+      )}
+
+      {/* ── Camera Views ── */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400 dark:text-slate-600">
+          <Camera size={40} strokeWidth={1.5} className="mb-3 opacity-40" />
+          <p className="text-sm font-medium">
+            {search ? 'No cameras match your search.' : 'No cameras added yet.'}
+          </p>
+          {isAdmin && !search && (
+            <button onClick={openAdd} className="mt-4 text-red-600 text-sm font-semibold hover:underline">
+              + Add your first camera
+            </button>
+          )}
+        </div>
+      ) : viewMode === 'grid' ? (
+        /* ── Grid / Card view ── */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {isAdmin && (
+            <div className="col-span-full flex items-center gap-2 pb-1">
+              <input
+                type="checkbox"
+                checked={allFilteredSelected}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                id="grid-select-all"
+              />
+              <label htmlFor="grid-select-all" className="text-xs text-slate-500 cursor-pointer select-none">
+                {allFilteredSelected ? 'Deselect all' : `Select all (${filtered.length})`}
+              </label>
+            </div>
+          )}
+          {filtered.map(cam => {
+            const si = statusInfo(cam.status);
+            const ipDisplay = cam.ip_address || cam.location?.split('@')[1]?.split('/')[0] || '—';
+            const isSelected = selectedIds.has(cam.id);
+            return (
+              <div key={cam.id}
+                className={`group bg-white dark:bg-slate-900 border rounded-2xl p-4
+                           hover:border-red-400/50 hover:shadow-md transition-all duration-200
+                           ${isSelected
+                             ? 'border-red-400 dark:border-red-600 ring-2 ring-red-500/20'
+                             : 'border-slate-200 dark:border-slate-800'}`}>
+
+                {/* card header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    {isAdmin && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(cam.id)}
+                        onClick={e => e.stopPropagation()}
+                        className="w-4 h-4 rounded accent-red-600 cursor-pointer shrink-0"
+                      />
+                    )}
+                    <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                      <Camera size={14} className="text-slate-500 dark:text-slate-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate max-w-[100px]" title={cam.name}>
+                        {cam.name}
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-mono">{ipDisplay}</p>
+                    </div>
                   </div>
-                </th>
-                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Globe size={14} className="text-blue-600" />
-                    IP Address
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${si.bg}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${si.dot} ${cam.status === 'online' ? 'animate-pulse' : ''}`} />
+                    {si.label}
+                  </span>
+                </div>
+
+                <div className="flex gap-2 mb-3 text-[11px]">
+                  <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-slate-500 dark:text-slate-400 font-medium">
+                    {cam.brand || 'Unknown'}
+                  </span>
+                  <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-slate-500 dark:text-slate-400 font-medium uppercase">
+                    {cam.connection_type}
+                  </span>
+                  {cam.is_recording && (
+                    <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-md font-bold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" /> REC
+                    </span>
+                  )}
+                </div>
+
+                {isAdmin ? (
+                  <div className="flex gap-1.5 border-t border-slate-100 dark:border-slate-800 pt-3">
+                    <button
+                      onClick={() => toggleStatus(cam)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        cam.status === 'disabled'
+                          ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50'
+                          : 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50'
+                      }`}
+                    >
+                      {cam.status === 'disabled' ? 'Enable' : 'Disable'}
+                    </button>
+                    <button onClick={() => setActiveAI(cam)} title="AI Models"
+                      className="p-1.5 rounded-lg text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all">
+                      <Brain size={15} />
+                    </button>
+                    <button onClick={() => openEdit(cam)} title="Edit"
+                      className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all">
+                      <Edit size={15} />
+                    </button>
+                    <button onClick={() => handleDelete(cam.id)} title="Delete"
+                      className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all ml-auto">
+                      <Trash2 size={15} />
+                    </button>
                   </div>
-                </th>
-                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">Brand</th>
-                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 text-center border-r border-slate-200 dark:border-slate-800">Recording</th>
-                <th className="px-6 py-5 text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300 text-right">Actions</th>
+                ) : (
+                  <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                    <span className="text-xs text-slate-400 italic">View only</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── List / Table view ── */
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
+                {isAdmin && (
+                  <th className="px-4 py-3 w-10 border border-slate-200 dark:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                      title={allFilteredSelected ? 'Deselect all' : 'Select all'}
+                    />
+                  </th>
+                )}
+                <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider border border-slate-200 dark:border-slate-700">Camera</th>
+                <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider border border-slate-200 dark:border-slate-700">IP / Network</th>
+                <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider border border-slate-200 dark:border-slate-700">Brand</th>
+                <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider border border-slate-200 dark:border-slate-700">Protocol</th>
+                <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider text-center border border-slate-200 dark:border-slate-700">Status</th>
+                {isAdmin && (
+                  <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider text-right border border-slate-200 dark:border-slate-700">Actions</th>
+                )}
               </tr>
             </thead>
-            <tbody className="divide-y-2 divide-slate-100 dark:divide-slate-800">
-              {paginatedCameras.map((camera) => (
-                <tr key={camera.id} className="group hover:bg-gradient-to-r hover:from-red-50/30 hover:to-transparent dark:hover:from-red-950/10 dark:hover:to-transparent transition-all duration-200 border-b border-slate-100 dark:border-slate-800/50">
-                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-xl border-2 transition-all ${camera.status === 'online' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 shadow-sm shadow-emerald-500/20' : 'bg-slate-500/10 border-slate-500/20 text-slate-500'}`}>
-                        <Camera size={18} strokeWidth={2.5} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-black text-slate-900 dark:text-white leading-tight tracking-wide">{camera.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px] mt-1 tracking-tight">{camera.stream_url}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                        <Globe size={14} className="text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono tracking-tight">
-                          {camera.ip_address || camera.location.split('@')[1]?.split('/')[0] || 'N/A'}
-                        </p>
-                        {camera.port && (
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">Port: {camera.port}</p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
-                    <span className="inline-flex items-center px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      {camera.brand}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5 border-r border-slate-100 dark:border-slate-800/50">
-                    <div className="flex justify-center">
-                      {camera.is_recording ? (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 text-rose-600 border-2 border-rose-500/30 rounded-xl shadow-sm shadow-rose-500/10">
-                          <span className="w-2 h-2 bg-rose-600 rounded-full animate-pulse shadow-lg shadow-rose-600/50" />
-                          <span className="text-xs font-black tracking-wider">RECORDING</span>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filtered.map(cam => {
+                const si = statusInfo(cam.status);
+                const ipDisplay = cam.ip_address || cam.location?.split('@')[1]?.split('/')[0] || '—';
+                const isSelected = selectedIds.has(cam.id);
+                return (
+                  <tr key={cam.id}
+                    className={`transition-colors ${
+                      isSelected
+                        ? 'bg-red-50 dark:bg-red-950/20'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}>
+                    {/* Checkbox */}
+                    {isAdmin && (
+                      <td className="px-4 py-3 border border-slate-100 dark:border-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(cam.id)}
+                          className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                        />
+                      </td>
+                    )}
+                    {/* Camera name */}
+                    <td className="px-4 py-3 border border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg shrink-0">
+                          <Camera size={13} className="text-slate-400" />
                         </div>
-                      ) : (
-                        <span className="text-xs font-black text-slate-300 dark:text-slate-600 uppercase tracking-wider">Idle</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 origin-right">
-                      {role === 'admin' ? (
-                        <>
-                          <ActionBtn onClick={() => toggleStatus(camera)} color="slate" icon={camera.status === 'disabled' ? ShieldCheck : ShieldAlert} />
-                          <ActionBtn onClick={() => setActiveConfigCamera(camera)} color="purple" icon={Brain} />
-                          <ActionBtn onClick={() => handleEdit(camera)} color="blue" icon={Edit} />
-                          <ActionBtn onClick={() => handleDelete(camera.id)} color="rose" icon={Trash2} />
-                        </>
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">No Perms</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <div>
+                          <p className="font-semibold text-slate-900 dark:text-white">{cam.name}</p>
+                          {cam.is_recording && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600">
+                              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" /> REC
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    {/* IP */}
+                    <td className="px-4 py-3 border border-slate-100 dark:border-slate-800">
+                      <span className="font-mono text-xs text-slate-700 dark:text-slate-300">{ipDisplay}</span>
+                      {cam.port && <span className="ml-1 text-[10px] text-slate-400">:{cam.port}</span>}
+                    </td>
+                    {/* Brand */}
+                    <td className="px-4 py-3 border border-slate-100 dark:border-slate-800">
+                      <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400">
+                        {cam.brand || 'Unknown'}
+                      </span>
+                    </td>
+                    {/* Protocol */}
+                    <td className="px-4 py-3 border border-slate-100 dark:border-slate-800">
+                      <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 uppercase">
+                        {cam.connection_type}
+                      </span>
+                    </td>
+                    {/* Status */}
+                    <td className="px-4 py-3 text-center border border-slate-100 dark:border-slate-800">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${si.bg}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${si.dot} ${cam.status === 'online' ? 'animate-pulse' : ''}`} />
+                        {si.label}
+                      </span>
+                    </td>
+                    {/* Actions */}
+                    {isAdmin && (
+                      <td className="px-4 py-3 border border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => toggleStatus(cam)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                              cam.status === 'disabled'
+                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400'
+                            }`}
+                          >
+                            {cam.status === 'disabled' ? 'Enable' : 'Disable'}
+                          </button>
+                          <button onClick={() => setActiveAI(cam)} title="AI Models"
+                            className="p-1.5 rounded-lg text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all">
+                            <Brain size={14} />
+                          </button>
+                          <button onClick={() => openEdit(cam)} title="Edit"
+                            className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all">
+                            <Edit size={14} />
+                          </button>
+                          <button onClick={() => handleDelete(cam.id)} title="Delete"
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {paginatedCameras.map(camera => (
-            <div key={camera.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-sm hover:border-red-500/30 transition-all">
-              <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg"><Camera size={12} /></div>
-                  <h3 className="text-[11px] font-bold dark:text-white truncate max-w-[100px]">{camera.name}</h3>
-                </div>
-                <span className={`px-1.5 py-0.5 rounded-lg text-[7px] font-black border ${getStatusStyle(camera.status)}`}>{camera.status}</span>
-              </div>
-              <div className="space-y-1 mb-3 bg-slate-50 dark:bg-slate-950/50 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                <GridInfo label="Brand" value={camera.brand} />
-                <GridInfo label="Network" value={camera.location.split('@')[1]?.split('/')[0] || 'Unresolved'} />
-              </div>
-              <div className="flex gap-1.5">
-                <button onClick={() => handleEdit(camera)} className="flex-1 py-1 bg-slate-100 dark:bg-slate-800 text-[9px] font-black uppercase tracking-tighter rounded-lg dark:text-slate-400 hover:bg-red-600 hover:text-white transition-all">Setup</button>
-                <button onClick={() => setActiveConfigCamera(camera)} className="px-2 py-1 bg-purple-600/10 text-purple-600 rounded-lg hover:bg-purple-600 hover:text-white transition-all"><Brain size={10} /></button>
-              </div>
-            </div>
-          ))}
-        </div>
       )}
 
-      {/* Pagination Controls */}
-      {filteredCameras.length > 0 && (
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-600 dark:text-slate-400">
-              Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredCameras.length)} of {filteredCameras.length} cameras
-            </span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
-            >
-              <option value={5}>5 per page</option>
-              <option value={10}>10 per page</option>
-              <option value={20}>20 per page</option>
-              <option value={50}>50 per page</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft size={18} />
-            </button>
-
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`min-w-[40px] h-10 rounded-lg font-medium text-sm transition-colors ${currentPage === pageNum
-                      ? 'bg-red-600 text-white'
-                      : 'border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
-                      }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Redesigned Modal - Premium Glass Compact */}
+      {/* ── Add / Edit Modal ── */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[60] animate-in zoom-in-95 duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl max-w-sm w-full overflow-hidden border border-white/10 flex flex-col">
-            <div className="p-5 flex justify-between items-center bg-slate-900 text-white border-b border-white/5 relative overflow-hidden">
-              <div className="relative z-10">
-                <h2 className="text-sm font-black flex items-center gap-2 uppercase tracking-[3px]">
-                  <Settings2 className="text-red-500" size={14} />
-                  Camera Setup
-                </h2>
-                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Surveillance Core Configuration</p>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50
+                        animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg
+                          border border-slate-200 dark:border-slate-700 overflow-hidden">
+
+            {/* modal header */}
+            <div className="flex items-center justify-between px-6 py-4
+                            border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                  <Settings2 size={16} className="text-red-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {editingCamera ? 'Edit Camera' : 'Add Camera'}
+                  </h2>
+                  <p className="text-[11px] text-slate-400">Configure connection settings</p>
+                </div>
               </div>
-              <button onClick={resetForm} className="p-2 hover:bg-white/10 rounded-full transition-all text-slate-400 relative z-10">
-                <X size={16} />
+              <button onClick={closeModal}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100
+                           dark:hover:bg-slate-800 dark:hover:text-white transition-all">
+                <X size={18} />
               </button>
-              <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 blur-3xl rounded-full translate-x-1/2 -translate-y-1/2" />
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <InputGroup label="Device Tag">
-                    <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="input-s" placeholder="e.g. Lobby 01" />
-                  </InputGroup>
-                  <InputGroup label="Deployment Site">
-                    <input type="text" required value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                      className="input-s" placeholder="e.g. Level 4" />
-                  </InputGroup>
-                </div>
+            {/* modal body */}
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
 
-                <div className="grid grid-cols-2 gap-3">
-                  <InputGroup label="Hardware Agent">
-                    <select value={formData.brand} onChange={(e) => setFormData({ ...formData, brand: e.target.value })} className="input-s">
-                      <option value="">Vendor</option>
-                      <option value="Dahua">Dahua</option>
-                      <option value="Hikvision">Hikvision</option>
-                      <option value="Generic">Generic</option>
-                    </select>
-                  </InputGroup>
-                  <InputGroup label="Data Protocol">
-                    <select value={formData.connection_type} onChange={(e) => setFormData({ ...formData, connection_type: e.target.value })} className="input-s">
-                      <option value="rtsp">RTSP (Stream)</option>
-                      <option value="http">HTTP (MJPEG)</option>
-                      <option value="4g">4G (Cellular)</option>
-                    </select>
-                  </InputGroup>
+              {/* ── Brand presets ── */}
+              <div>
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Quick Brand Preset</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries({
+                    Dahua:     { path: '/cam/realmonitor?channel=1&subtype=0', port: 554 },
+                    Hikvision: { path: '/Streaming/Channels/101',              port: 554 },
+                    Axis:      { path: '/axis-media/media.amp',                port: 554 },
+                    Uniview:   { path: '/unicast/c1/s0/live',                  port: 554 },
+                    Reolink:   { path: '/h264Preview_01_main',                 port: 554 },
+                    Generic:   { path: '/stream1',                             port: 554 },
+                  }).map(([brand, cfg]) => (
+                    <button key={brand} type="button"
+                      onClick={() => patch({ brand, rtsp_path: cfg.path, port: cfg.port, connection_type: 'rtsp' })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        formData.brand === brand
+                          ? 'bg-red-600 border-red-600 text-white shadow'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-red-400 hover:text-red-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+                      }`}>
+                      {brand}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-3xl border border-slate-100 dark:border-white/5 space-y-3">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <InputGroup label="Endpoint IP Address">
-                      <input type="text" value={formData.ip_address} onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
-                        className="input-s tracking-widest text-center font-mono" />
-                    </InputGroup>
+              {/* ── Name + Location ── */}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Camera Name *">
+                  <input type="text" required placeholder="e.g. Front Gate"
+                    value={formData.name} onChange={e => patch({ name: e.target.value })}
+                    className={inputCls} />
+                </Field>
+                <Field label="Location / Description">
+                  <input type="text" placeholder="e.g. Main entrance"
+                    value={formData.location} onChange={e => patch({ location: e.target.value })}
+                    className={inputCls} />
+                </Field>
+              </div>
+
+              {/* ── IP + Port ── */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <Field label="IP Address *">
+                    <input type="text" required placeholder="192.168.1.100"
+                      value={formData.ip_address} onChange={e => patch({ ip_address: e.target.value })}
+                      className={`${inputCls} font-mono`} />
+                  </Field>
+                </div>
+                <Field label="Port">
+                  <input type="number" required placeholder="554"
+                    value={formData.port} onChange={e => patch({ port: parseInt(e.target.value) || 554 })}
+                    className={`${inputCls} font-mono text-center`} />
+                </Field>
+              </div>
+
+              {/* ── Username + Password ── */}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Username">
+                  <input type="text" placeholder="admin"
+                    value={formData.username} onChange={e => patch({ username: e.target.value })}
+                    className={inputCls} />
+                </Field>
+                <Field label="Password">
+                  <div className="relative">
+                    <input type={showPassword ? 'text' : 'password'} placeholder="••••••••"
+                      value={formData.password} onChange={e => patch({ password: e.target.value })}
+                      className={`${inputCls} pr-9`} />
+                    <button type="button" onClick={() => setShowPassword(s => !s)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
                   </div>
-                  <InputGroup label="Comm Port">
-                    <input type="number" value={formData.port} onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 554 })}
-                      className="input-s text-center font-mono" />
-                  </InputGroup>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <InputGroup label="Security User">
-                    <input type="text" value={formData.username} onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      className="input-s" placeholder="admin" />
-                  </InputGroup>
-                  <InputGroup label="Access Key">
-                    <input type="password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="input-s" placeholder="••••••••" />
-                  </InputGroup>
-                </div>
+                </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 border-t border-slate-100 dark:border-white/5 pt-3">
-                <InputGroup label="Capture Quality">
-                  <select value={formData.resolution} onChange={(e) => setFormData({ ...formData, resolution: e.target.value })} className="input-s">
-                    <option value="1920x1080">1080p FHD</option>
-                    <option value="1280x720">720p HD</option>
-                    <option value="3840x2160">2160p 4K</option>
+              {/* ── Stream path + protocol row ── */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <Field label="Stream Path">
+                    <input type="text" required placeholder="/Streaming/Channels/101"
+                      value={formData.rtsp_path} onChange={e => patch({ rtsp_path: e.target.value })}
+                      className={`${inputCls} font-mono text-xs`} />
+                  </Field>
+                </div>
+                <Field label="Protocol">
+                  <select value={formData.connection_type} onChange={e => patch({ connection_type: e.target.value })} className={inputCls}>
+                    <option value="rtsp">RTSP</option>
+                    <option value="http">HTTP</option>
+                    <option value="webrtc">WebRTC</option>
                   </select>
-                </InputGroup>
-                <InputGroup label="Sample Rate (FPS)">
-                  <input type="number" value={formData.fps} onChange={(e) => setFormData({ ...formData, fps: parseInt(e.target.value) })}
-                    className="input-s" min="1" max="60" />
-                </InputGroup>
+                </Field>
               </div>
 
-              <div className="flex flex-col gap-2 pt-4">
-                <button type="submit" className="w-full py-2.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-[3px] rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-600/20 active:scale-95">
-                  {editingCamera ? 'UPDATE CAMERA' : 'ADD CAMERA'}
+              {/* ── Live URL preview ── */}
+              <div className="rounded-xl bg-slate-950 dark:bg-black border border-slate-800 p-3 space-y-2">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Live Preview</p>
+                <div className="space-y-1">
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] font-bold text-slate-500 w-10 shrink-0 mt-0.5">RTSP</span>
+                    <span className="text-[11px] font-mono text-emerald-400 break-all leading-relaxed">{liveRtsp}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-500 w-10 shrink-0">HLS</span>
+                    <span className="text-[11px] font-mono text-blue-400 break-all">{liveHls}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Resolution + FPS ── */}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Resolution">
+                  <select value={formData.resolution} onChange={e => patch({ resolution: e.target.value })} className={inputCls}>
+                    <option value="1920x1080">1080p (1920×1080)</option>
+                    <option value="1280x720">720p (1280×720)</option>
+                    <option value="3840x2160">4K (3840×2160)</option>
+                    <option value="2560x1440">1440p (2560×1440)</option>
+                  </select>
+                </Field>
+                <Field label="FPS">
+                  <input type="number" min={1} max={60}
+                    value={formData.fps} onChange={e => patch({ fps: parseInt(e.target.value) || 25 })}
+                    className={`${inputCls} text-center`} />
+                </Field>
+              </div>
+
+              {/* ── Test result banner ── */}
+              {testMsg && (
+                <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-medium border ${
+                  testResult === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700 dark:text-emerald-400'
+                    : 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/20 dark:border-rose-700 dark:text-rose-400'
+                }`}>
+                  {testResult === 'success' ? <Wifi size={15} /> : <WifiOff size={15} />}
+                  {testMsg}
+                </div>
+              )}
+
+              {/* ── Footer buttons ── */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button type="button" onClick={closeModal}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200
+                             dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 rounded-xl transition-all">
+                  Cancel
                 </button>
-                <div className="flex gap-2">
-                  <button type="button" onClick={async () => {
-                    const btn = document.getElementById('test-btn-compact');
-                    if (btn) btn.innerText = "LINKING...";
-                    setTimeout(() => { if (btn) btn.innerText = "LINK SUCCESSFUL"; }, 1500);
-                  }} id="test-btn-compact" className="flex-1 py-2 text-[9px] font-black uppercase tracking-widest text-blue-600 border border-blue-500/30 bg-blue-500/5 rounded-xl hover:bg-blue-500/10 transition-all">
-                    Validate Source
-                  </button>
-                  <button type="button" onClick={resetForm} className="flex-1 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 border border-slate-200 dark:border-white/10 rounded-xl hover:bg-slate-50 dark:hover:bg-white/5 transition-all">
-                    Abort
+
+                <button type="button" onClick={testConnection}
+                  disabled={testing || !formData.ip_address}
+                  className={`px-4 py-2 text-sm font-medium rounded-xl transition-all flex items-center gap-2 disabled:opacity-50
+                    ${testResult === 'success' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                    : testResult === 'error'   ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                    : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400'}`}>
+                  {testing ? <><RefreshCw size={14} className="animate-spin" /> Testing…</>
+                    : testResult === 'success' ? <><Wifi size={14} /> Connected</>
+                    : testResult === 'error'   ? <><WifiOff size={14} /> Failed</>
+                    : <><Wifi size={14} /> Test Connection</>}
+                </button>
+
+                <div className="ml-auto flex gap-2">
+                  {!editingCamera && (
+                    <button type="submit" disabled={testing}
+                      onClick={() => setSaveAndAddAnother(true)}
+                      className="px-4 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100
+                                 dark:bg-red-900/20 dark:hover:bg-red-900/30 border border-red-200 dark:border-red-800
+                                 rounded-xl transition-all disabled:opacity-50 whitespace-nowrap">
+                      + Add Another
+                    </button>
+                  )}
+                  <button type="submit" disabled={testing}
+                    onClick={() => setSaveAndAddAnother(false)}
+                    className="px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700
+                               rounded-xl transition-all shadow-sm disabled:opacity-50">
+                    {editingCamera ? 'Save Changes' : 'Add Camera'}
                   </button>
                 </div>
               </div>
@@ -545,84 +803,25 @@ export default function CameraManagement() {
         </div>
       )}
 
-      {activeConfigCamera && (
-        <CameraModelAssignment camera={activeConfigCamera} onClose={() => setActiveConfigCamera(null)} />
+      {/* ── AI Model Assignment ── */}
+      {activeAI && (
+        <CameraModelAssignment camera={activeAI} onClose={() => setActiveAI(null)} />
       )}
-
-      <style>{`
-        .input-s {
-            width: 100%;
-            height: 32px;
-            padding: 0 10px;
-            font-size: 11px;
-            font-weight: 700;
-            background: #f1f5f9;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            outline: none;
-            transition: all 0.2s;
-        }
-        .dark .input-s {
-            background: #020617;
-            border: 1px solid #1e293b;
-            color: white;
-        }
-        .input-s:focus {
-            background: white;
-            border-color: #ef4444;
-            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.08);
-        }
-        .dark .input-s:focus {
-            background: #000;
-            border-color: #ef4444;
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #e2e8f0;
-            border-radius: 10px;
-        }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #1e293b;
-        }
-      `}</style>
     </div>
   );
 }
 
-function ActionBtn({ icon: Icon, color, onClick }: any) {
-  const colors: any = {
-    slate: 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white',
-    purple: 'bg-purple-500/10 text-purple-600 hover:bg-purple-500 hover:text-white',
-    blue: 'bg-blue-500/10 text-blue-600 hover:bg-blue-500 hover:text-white',
-    rose: 'bg-rose-500/10 text-rose-600 hover:bg-rose-500 hover:text-white',
-  };
-  return (
-    <button onClick={onClick} className={`p-2 rounded-lg transition-all transform hover:scale-105 active:scale-90 ${colors[color]}`}>
-      <Icon size={16} strokeWidth={2.5} />
-    </button>
-  );
-}
+/* ─── sub-components ─────────────────────────────────────────────────────── */
+const inputCls =
+  'w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 ' +
+  'rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 focus:outline-none transition-all ' +
+  'dark:text-white placeholder:text-slate-400';
 
-function InputGroup({ label, children }: any) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">
-        {label}
-      </label>
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function GridInfo({ label, value }: any) {
-  return (
-    <div className="flex justify-between items-center text-[9px]">
-      <span className="text-slate-500 uppercase font-black tracking-widest">{label}</span>
-      <span className="font-bold dark:text-slate-400 truncate max-w-[60px]">{value}</span>
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</label>
+      {children}
     </div>
   );
 }

@@ -125,7 +125,7 @@ export default function EventNotifications() {
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (latestEvent && latestEvent.id !== lastEventIdRef.current) {
                 // New event detected!

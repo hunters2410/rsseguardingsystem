@@ -54,6 +54,35 @@ ai-server/ai_log.txt
 # Temporary/Debug Scripts
 debug_*.py
 check_*.py
+fix_*.py
+verify_*.py
+assign_*.py
+list_*.py
+fetch_*.py
+rebind_*.py
+setup.py
+dump_*.py
+describe_*.py
+test_stream.py
+run_migration.py
+tmp/
+
+# Backup files
+*.bak
+
+# Output / generated data files
+*.txt
+!README.txt
+!requirements.txt
+paths*.json
+result.txt
+out.txt
+health_output.txt
+debug_output.txt
+db_dump.json
+
+# Streaming server config (contains camera RTSP credentials)
+streaming-server/mediamtx.yml
 
 # Editor/OS
 .vscode/

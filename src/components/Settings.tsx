@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, RefreshCw, Mail, MessageSquare, Shield, Lock, Bell, User, Send, ScanLine, Trash2, Plus } from 'lucide-react';
+import { Save, RefreshCw, Mail, MessageSquare, Shield, Lock, Bell, User, Send, ScanLine, Trash2, Plus, Database, Download, CheckCircle2, AlertCircle } from 'lucide-react';
 import { supabase, type SystemSettings } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ZoneSettings from './ZoneSettings';
@@ -10,7 +10,13 @@ export default function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
-    const [activeTab, setActiveTab] = useState<'general' | 'email' | 'sms' | 'security' | 'zones'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'email' | 'sms' | 'security' | 'zones' | 'backup'>('general');
+
+    // Backup state
+    const [backupProgress, setBackupProgress] = useState<string[]>([]);
+    const [backupRunning, setBackupRunning]   = useState(false);
+    const [backupDone, setBackupDone]         = useState(false);
+    const [backupError, setBackupError]       = useState('');
 
     // Password Change State
     const [password, setPassword] = useState('');
@@ -72,7 +78,7 @@ export default function Settings() {
 
     const loadSettings = async () => {
         setLoading(true);
-        const { data } = await supabase.from('system_settings').select('*').limit(1).single();
+        const { data } = await supabase.from('system_settings').select('*').limit(1).maybeSingle();
 
         if (data) {
             setSettings(data);
@@ -81,7 +87,7 @@ export default function Settings() {
             // Init if empty
             const { data: newData } = await supabase.from('system_settings').insert([
                 { company_name: 'Real Star Security' }
-            ]).select().single();
+            ]).select().maybeSingle();
             if (newData) {
                 setSettings(newData);
                 setFormData(newData);
@@ -153,6 +159,119 @@ export default function Settings() {
         }
     };
 
+    // ── Database Backup ────────────────────────────────────────────────────────
+    const ALL_TABLES = [
+        'cameras', 'events', 'ai_models', 'ai_servers', 'camera_models',
+        'camera_zones', 'alert_rules', 'system_settings', 'notification_emails',
+        'known_faces', 'known_face_photos', 'known_color_profiles',
+        'datasets', 'training_jobs', 'system_commands', 'user_profiles',
+        'app_notifications',
+    ];
+
+    const log = (msg: string) => setBackupProgress(prev => [...prev, msg]);
+
+    const escSql = (v: any): string => {
+        if (v === null || v === undefined) return 'NULL';
+        if (typeof v === 'boolean')  return v ? 'TRUE' : 'FALSE';
+        if (typeof v === 'number')   return String(v);
+        if (typeof v === 'object')   return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
+        return `'${String(v).replace(/'/g, "''")}'`;
+    };
+
+    const downloadBackup = async () => {
+        setBackupRunning(true);
+        setBackupDone(false);
+        setBackupError('');
+        setBackupProgress([]);
+
+        const lines: string[] = [
+            '-- ============================================================',
+            `-- Real Star Security Systems — Database Backup`,
+            `-- Generated: ${new Date().toISOString()}`,
+            '-- ============================================================',
+            '',
+            'SET client_encoding = \'UTF8\';',
+            '',
+        ];
+
+        // 1. Dump each table's data
+        for (const table of ALL_TABLES) {
+            log(`Fetching ${table}...`);
+            const { data, error } = await supabase.from(table).select('*').order('created_at' as any, { ascending: true });
+            if (error) {
+                log(`  ⚠ Skipped ${table}: ${error.message}`);
+                continue;
+            }
+            const rows = data as Record<string, any>[] | null;
+            lines.push(`-- ── Table: ${table} (${rows?.length ?? 0} rows) ──`);
+            if (!rows || rows.length === 0) {
+                lines.push(`-- (empty)`, '');
+                continue;
+            }
+            const cols = Object.keys(rows[0]);
+            lines.push(`INSERT INTO ${table} (${cols.join(', ')}) VALUES`);
+            const valueLines = rows.map((row, i) => {
+                const vals = cols.map(c => escSql(row[c])).join(', ');
+                return `  (${vals})${i < rows.length - 1 ? ',' : ';'}`;
+            });
+            lines.push(...valueLines, '');
+            log(`  ✓ ${table}: ${rows.length} rows`);
+        }
+
+        // 2. Dump RLS policies via pg_policies view
+        log('Fetching RLS policies...');
+        const { data: policies, error: polErr } = await (supabase as any)
+            .from('pg_policies')
+            .select('schemaname, tablename, policyname, permissive, roles, cmd, qual, with_check')
+            .eq('schemaname', 'public');
+
+        if (!polErr && policies && policies.length > 0) {
+            lines.push('-- ============================================================');
+            lines.push('-- Row Level Security Policies');
+            lines.push('-- ============================================================');
+            for (const p of policies as any[]) {
+                lines.push(`-- Policy: ${p.policyname} ON ${p.tablename}`);
+                lines.push(`--   Command : ${p.cmd}`);
+                lines.push(`--   Roles   : ${(p.roles || []).join(', ') || '(all)'}`);
+                lines.push(`--   USING   : ${p.qual || '(none)'}`);
+                if (p.with_check) lines.push(`--   WITH CHECK: ${p.with_check}`);
+                lines.push(
+                    `CREATE POLICY ${JSON.stringify(p.policyname)} ON public.${p.tablename}`,
+                    `  AS ${p.permissive ? 'PERMISSIVE' : 'RESTRICTIVE'}`,
+                    `  FOR ${p.cmd}`,
+                    `  TO ${(p.roles || []).join(', ') || 'PUBLIC'}`,
+                    p.qual ? `  USING (${p.qual})` : '',
+                    p.with_check ? `  WITH CHECK (${p.with_check})` : '',
+                    ';',
+                    ''
+                );
+            }
+            log(`  ✓ ${policies.length} RLS policies`);
+        } else {
+            log('  ℹ RLS policies require service-role access — skipped for anon key');
+            lines.push(
+                '-- ============================================================',
+                '-- RLS Policies: run pg_dump with service-role key for full policy export',
+                '-- ============================================================',
+                ''
+            );
+        }
+
+        // 3. Trigger download
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        a.href     = url;
+        a.download = `rss-backup-${ts}.sql`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        log('✅ Backup downloaded!');
+        setBackupDone(true);
+        setBackupRunning(false);
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
@@ -167,102 +286,104 @@ export default function Settings() {
     const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
         <button
             onClick={() => setActiveTab(id)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200 ${activeTab === id
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-all duration-200 ${activeTab === id
                 ? 'bg-red-600 text-white shadow-md shadow-red-200 dark:shadow-none'
                 : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
                 }`}
         >
-            <Icon size={18} className={activeTab === id ? 'text-white' : 'text-slate-500 dark:text-slate-400'} />
+            <Icon size={15} className={activeTab === id ? 'text-white' : 'text-slate-500 dark:text-slate-400'} />
             <span className="font-medium">{label}</span>
         </button>
     );
 
     return (
-        <div className="max-w-6xl mx-auto space-y-8">
+        <div className="max-w-6xl mx-auto space-y-5">
             <div className="flex justify-between items-start">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Settings & Preference</h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">Manage system configurations, integrations and account security</p>
+                    <h1 className="text-xl font-bold text-slate-900 dark:text-white">Settings & Preference</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage system configurations, integrations and account security</p>
                 </div>
                 <button
                     onClick={loadSettings}
-                    className="p-2.5 bg-white dark:bg-slate-800 text-slate-500 hover:text-red-600 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition-colors"
+                    className="p-2 bg-white dark:bg-slate-800 text-slate-500 hover:text-red-600 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition-colors"
                 >
-                    <RefreshCw size={20} />
+                    <RefreshCw size={16} />
                 </button>
             </div>
 
-            <div className="flex flex-col md:flex-row gap-8">
+            <div className="flex flex-col md:flex-row gap-5">
                 {/* Sidebar Navigation */}
-                <div className="w-full md:w-64 flex-shrink-0">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 space-y-2 sticky top-24">
-                        <TabButton id="general" label="General & Profile" icon={User} />
-                        <TabButton id="email" label="Email Integration" icon={Mail} />
-                        <TabButton id="sms" label="SMS Integration" icon={MessageSquare} />
+                <div className="w-full md:w-52 flex-shrink-0">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-3 shadow-sm border border-slate-200 dark:border-slate-700 space-y-1 sticky top-24">
+                                <TabButton id="general"  label="General & Profile"    icon={User} />
+                        <TabButton id="email"    label="Email Integration"   icon={Mail} />
+                        <TabButton id="sms"      label="SMS Integration"     icon={MessageSquare} />
                         <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
-                        <TabButton id="security" label="Security" icon={Lock} />
+                        <TabButton id="security" label="Security"            icon={Lock} />
                         <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
-                        <TabButton id="zones" label="Zones & Boundaries" icon={ScanLine} />
+                        <TabButton id="zones"    label="Zones & Boundaries"  icon={ScanLine} />
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
+                        <TabButton id="backup"   label="Database Backup"     icon={Database} />
                     </div>
                 </div>
 
                 {/* Content Area */}
                 <div className="flex-1">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 md:p-8 min-h-[500px]">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 min-h-[500px]">
 
                         {activeTab === 'general' && (
-                            <form onSubmit={handleSave} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <form onSubmit={handleSave} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">General Settings</h2>
-                                    <p className="text-sm text-slate-500">Configure basic system and profile information</p>
+                                    <h2 className="text-base font-bold text-slate-900 dark:text-white mb-0.5">General Settings</h2>
+                                    <p className="text-xs text-slate-500">Configure basic system and profile information</p>
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-6">
-                                    <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                                        <div className="flex items-center gap-4 mb-4">
-                                            <div className="w-16 h-16 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-3xl font-bold text-slate-500 dark:text-slate-400">
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-700/50">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-lg font-bold text-slate-500 dark:text-slate-400">
                                                 {user?.email?.[0].toUpperCase()}
                                             </div>
                                             <div>
-                                                <h3 className="font-semibold text-slate-900 dark:text-white">System Admin</h3>
-                                                <p className="text-sm text-slate-500">{user?.email}</p>
+                                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">System Admin</h3>
+                                                <p className="text-xs text-slate-500">{user?.email}</p>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Company Name</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Company Name</label>
                                         <input
                                             type="text"
                                             name="company_name"
                                             value={formData.company_name}
                                             onChange={handleChange}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             placeholder="Enter company name"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Admin Contact Email</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Admin Contact Email</label>
                                         <input
                                             type="email"
                                             name="admin_email"
                                             value={formData.admin_email}
                                             onChange={handleChange}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             placeholder="admin@example.com"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Data Retention (Days)</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Data Retention (Days)</label>
                                         <div className="relative">
                                             <input
                                                 type="number"
                                                 name="retention_days"
                                                 value={formData.retention_days}
                                                 onChange={handleChange}
-                                                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                                className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             />
                                             <span className="absolute right-4 top-2.5 text-slate-400 text-sm">Days</span>
                                         </div>
@@ -293,13 +414,13 @@ export default function Settings() {
                                     </div>
                                 </div>
 
-                                <div className="pt-6 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+                                <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-end">
                                     <button
                                         type="submit"
                                         disabled={saving}
-                                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all disabled:opacity-50 disabled:shadow-none"
+                                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 text-sm rounded-lg font-medium shadow shadow-red-600/20 flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:shadow-none"
                                     >
-                                        <Save size={18} />
+                                        <Save size={15} />
                                         {saving ? 'Saving...' : 'Save Changes'}
                                     </button>
                                 </div>
@@ -307,11 +428,11 @@ export default function Settings() {
                         )}
 
                         {activeTab === 'email' && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <form onSubmit={handleSave} className="space-y-8">
+                            <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <form onSubmit={handleSave} className="space-y-5">
                                     <div>
-                                        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Email Integration</h2>
-                                        <p className="text-sm text-slate-500">Configure SMTP settings for system alerts</p>
+                                        <h2 className="text-base font-bold text-slate-900 dark:text-white mb-0.5">Email Integration</h2>
+                                        <p className="text-xs text-slate-500">Configure SMTP settings for system alerts</p>
                                     </div>
                                     {/* ... existing form content ... */}
                                     <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 p-4 rounded-xl flex items-start gap-3">
@@ -340,90 +461,90 @@ export default function Settings() {
 
                                     <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity duration-300 ${!formData.alert_email_enabled ? 'opacity-50 pointer-events-none blur-sm select-none' : ''}`}>
                                         <div className="md:col-span-2">
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">SMTP Host</label>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">SMTP Host</label>
                                             <input
                                                 type="text"
                                                 name="smtp_host"
                                                 placeholder="smtp.gmail.com"
                                                 value={formData.smtp_host || ''}
                                                 onChange={handleChange}
-                                                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                                className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Port</label>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Port</label>
                                             <input
                                                 type="number"
                                                 name="smtp_port"
                                                 placeholder="587"
                                                 value={formData.smtp_port || 587}
                                                 onChange={handleChange}
-                                                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                                className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Sender Email</label>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Sender Email</label>
                                             <input
                                                 type="email"
                                                 name="smtp_from"
                                                 placeholder="alerts@myapp.com"
                                                 value={formData.smtp_from || ''}
                                                 onChange={handleChange}
-                                                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                                className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Username</label>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Username</label>
                                             <input
                                                 type="text"
                                                 name="smtp_user"
                                                 value={formData.smtp_user || ''}
                                                 onChange={handleChange}
-                                                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                                className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Password</label>
+                                            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Password</label>
                                             <input
                                                 type="password"
                                                 name="smtp_pass"
                                                 value={formData.smtp_pass || ''}
                                                 onChange={handleChange}
-                                                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                                className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="pt-6 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+                                    <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-end">
                                         <button
                                             type="submit"
                                             disabled={saving}
-                                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all disabled:opacity-50 disabled:shadow-none"
+                                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 text-sm rounded-lg font-medium shadow shadow-red-600/20 flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:shadow-none"
                                         >
-                                            <Save size={18} />
+                                            <Save size={15} />
                                             {saving ? 'Saving...' : 'Save Configuration'}
                                         </button>
                                     </div>
                                 </form>
 
-                                <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
-                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Notification Recipients</h3>
-                                    <div className="space-y-4">
+                                <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-700">
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">Notification Recipients</h3>
+                                    <div className="space-y-3">
                                         <div className="flex gap-2">
                                             <input
                                                 type="email"
                                                 placeholder="Enter recipient email address"
                                                 value={newEmail}
                                                 onChange={(e) => setNewEmail(e.target.value)}
-                                                className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                                className="flex-1 px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             />
                                             <button
                                                 type="button"
                                                 onClick={addNotificationEmail}
                                                 disabled={!newEmail}
-                                                className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2.5 rounded-xl font-medium hover:bg-slate-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                                                className="bg-slate-900 dark:bg-slate-700 text-white px-3 py-1.5 text-sm rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                                             >
-                                                <Plus size={18} /> Add
+                                                <Plus size={15} /> Add
                                             </button>
                                         </div>
 
@@ -453,13 +574,13 @@ export default function Settings() {
                                     </div>
                                 </div>
 
-                                <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
-                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Test Configuration</h3>
+                                <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-700">
+                                    <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">Test Configuration</h3>
                                     {/* Test UI Here... */}
                                     <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-6 border border-slate-100 dark:border-slate-700/50">
                                         <div className="flex flex-col sm:flex-row gap-4 items-end">
                                             <div className="flex-1 w-full">
-                                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Send Test Email To</label>
+                                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Send Test Email To</label>
                                                 <input
                                                     type="email"
                                                     placeholder="admin@example.com"
@@ -485,7 +606,7 @@ export default function Settings() {
                                                             command_type: 'test_email',
                                                             payload: payload,
                                                             status: 'pending'
-                                                        }).select().single();
+                                                        }).select().maybeSingle();
 
                                                         if (error) throw error;
 
@@ -493,7 +614,7 @@ export default function Settings() {
                                                         const maxAttempts = 10;
                                                         const pollInterval = setInterval(async () => {
                                                             attempts++;
-                                                            const { data: updatedCmd } = await supabase.from('system_commands').select('*').eq('id', cmd.id).single();
+                                                            const { data: updatedCmd } = await supabase.from('system_commands').select('*').eq('id', cmd.id).maybeSingle();
                                                             if (updatedCmd && updatedCmd.status !== 'pending' && updatedCmd.status !== 'processing') {
                                                                 clearInterval(pollInterval);
                                                                 setTesting(false);
@@ -514,9 +635,9 @@ export default function Settings() {
                                                         alert('Failed to trigger test: ' + e.message);
                                                     }
                                                 }}
-                                                className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 px-6 py-2.5 rounded-xl font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 transition-all h-[46px] disabled:opacity-50"
+                                                className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 px-4 py-1.5 text-sm rounded-lg font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1.5 transition-all disabled:opacity-50"
                                             >
-                                                <Send size={18} />
+                                                <Send size={15} />
                                                 {testing ? 'Sending...' : 'Send Test Email'}
                                             </button>
                                         </div>
@@ -527,10 +648,10 @@ export default function Settings() {
                         )}
 
                         {activeTab === 'sms' && (
-                            <form onSubmit={handleSave} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <form onSubmit={handleSave} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">SMS Integration</h2>
-                                    <p className="text-sm text-slate-500">Configure SMS provider settings</p>
+                                    <h2 className="text-base font-bold text-slate-900 dark:text-white mb-0.5">SMS Integration</h2>
+                                    <p className="text-xs text-slate-500">Configure SMS provider settings</p>
                                 </div>
 
                                 <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 p-4 rounded-xl flex items-start gap-3">
@@ -559,12 +680,12 @@ export default function Settings() {
 
                                 <div className={`space-y-6 transition-opacity duration-300 ${!formData.alert_sms_enabled ? 'opacity-50 pointer-events-none blur-sm select-none' : ''}`}>
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Provider</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Provider</label>
                                         <select
                                             name="sms_provider"
                                             value={formData.sms_provider || 'twilio'}
                                             onChange={handleChange}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                         >
                                             <option value="twilio">Twilio</option>
                                             <option value="nexmo">Nexmo/Vonage</option>
@@ -573,47 +694,47 @@ export default function Settings() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Account SID / API Key</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Account SID / API Key</label>
                                         <input
                                             type="text"
                                             name="sms_account_sid"
                                             value={formData.sms_account_sid || ''}
                                             onChange={handleChange}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Auth Token / Secret</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Auth Token / Secret</label>
                                         <input
                                             type="password"
                                             name="sms_auth_token"
                                             value={formData.sms_auth_token || ''}
                                             onChange={handleChange}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Sender Number / ID</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Sender Number / ID</label>
                                         <input
                                             type="text"
                                             name="sms_from"
                                             placeholder="+15005550006"
                                             value={formData.sms_from || ''}
                                             onChange={handleChange}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="pt-6 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+                                <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-end">
                                     <button
                                         type="submit"
                                         disabled={saving}
-                                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all disabled:opacity-50 disabled:shadow-none"
+                                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 text-sm rounded-lg font-medium shadow shadow-red-600/20 flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:shadow-none"
                                     >
-                                        <Save size={18} />
+                                        <Save size={15} />
                                         {saving ? 'Saving...' : 'Save Configuration'}
                                     </button>
                                 </div>
@@ -621,10 +742,10 @@ export default function Settings() {
                         )}
 
                         {activeTab === 'security' && (
-                            <form onSubmit={handlePasswordChange} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <form onSubmit={handlePasswordChange} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Security Settings</h2>
-                                    <p className="text-sm text-slate-500">Update your password and secure your account</p>
+                                    <h2 className="text-base font-bold text-slate-900 dark:text-white mb-0.5">Security Settings</h2>
+                                    <p className="text-xs text-slate-500">Update your password and secure your account</p>
                                 </div>
 
                                 <div className="max-w-md space-y-6">
@@ -642,23 +763,23 @@ export default function Settings() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">New Password</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">New Password</label>
                                         <input
                                             type="password"
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             placeholder="Enter new password"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Confirm Password</label>
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirm Password</label>
                                         <input
                                             type="password"
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
-                                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
+                                            className="w-full px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all dark:text-white"
                                             placeholder="Confirm new password"
                                         />
                                     </div>
@@ -673,7 +794,7 @@ export default function Settings() {
                                         <button
                                             type="submit"
                                             disabled={saving || !password || !confirmPassword}
-                                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-red-600/20 flex items-center gap-2 transition-all disabled:opacity-50 disabled:shadow-none"
+                                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 text-sm rounded-lg font-medium shadow shadow-red-600/20 flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:shadow-none"
                                         >
                                             <Shield size={18} />
                                             {saving ? 'Updating...' : 'Update Password'}
@@ -681,6 +802,73 @@ export default function Settings() {
                                     </div>
                                 </div>
                             </form>
+                        )}
+
+                        {activeTab === 'backup' && (
+                            <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div>
+                                    <h2 className="text-base font-bold text-slate-900 dark:text-white mb-0.5">Database Backup</h2>
+                                    <p className="text-xs text-slate-500">Download a full SQL dump of all application data and RLS policies</p>
+                                </div>
+
+                                {/* Info card */}
+                                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl text-sm space-y-2">
+                                    <p className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                                        <Database size={15} /> What's included in the backup
+                                    </p>
+                                    <ul className="list-disc list-inside text-blue-800 dark:text-blue-200 space-y-1 text-xs">
+                                        <li>All application tables: cameras, events, AI models, servers, zones, alert rules…</li>
+                                        <li>Settings, notification emails, known faces, datasets, training jobs</li>
+                                        <li>RLS (Row Level Security) policy definitions</li>
+                                        <li>Downloaded as a <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">.sql</code> file — importable via psql or Supabase SQL editor</li>
+                                    </ul>
+                                </div>
+
+                                {/* Download button */}
+                                <button
+                                    onClick={downloadBackup}
+                                    disabled={backupRunning}
+                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60
+                                               text-white px-5 py-2.5 rounded-xl font-semibold text-sm shadow
+                                               shadow-red-600/20 active:scale-95 transition-all"
+                                >
+                                    {backupRunning
+                                        ? <><RefreshCw size={15} className="animate-spin" /> Generating backup…</>
+                                        : <><Download size={15} /> Download SQL Backup</>}
+                                </button>
+
+                                {/* Progress log */}
+                                {backupProgress.length > 0 && (
+                                    <div className="bg-slate-900 dark:bg-black rounded-xl p-4 font-mono text-xs space-y-0.5 max-h-64 overflow-y-auto">
+                                        {backupProgress.map((line, i) => (
+                                            <div key={i} className="text-green-400">{line}</div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Success / Error banner */}
+                                {backupDone && !backupRunning && (
+                                    <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20
+                                                    border border-emerald-200 dark:border-emerald-800 rounded-xl
+                                                    text-emerald-700 dark:text-emerald-400 text-sm font-semibold">
+                                        <CheckCircle2 size={16} /> Backup downloaded successfully!
+                                    </div>
+                                )}
+                                {backupError && (
+                                    <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20
+                                                    border border-red-200 dark:border-red-800 rounded-xl
+                                                    text-red-700 dark:text-red-400 text-sm font-semibold">
+                                        <AlertCircle size={16} /> {backupError}
+                                    </div>
+                                )}
+
+                                {/* Warning note */}
+                                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+                                    <strong>Note:</strong> The anon API key can only read tables your RLS policies allow.
+                                    For a complete dump including all policies, run <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">pg_dump</code> from
+                                    the Supabase Dashboard → SQL Editor using the service-role key.
+                                </div>
+                            </div>
                         )}
 
                         {activeTab === 'zones' && (

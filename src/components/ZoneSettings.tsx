@@ -22,6 +22,8 @@ export default function ZoneSettings() {
     const [isDrawing, setIsDrawing] = useState(false);
     const [drawType, setDrawType] = useState<'line' | 'zone'>('line');
     const [loading, setLoading] = useState(false);
+    const [manualUrl, setManualUrl] = useState('');
+    const [showManualInput, setShowManualInput] = useState(false);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imageRef = useRef<HTMLImageElement>(null);
@@ -37,6 +39,8 @@ export default function ZoneSettings() {
             setZones([]);
             setCurrentPoints([]);
             setIsDrawing(false);
+            setManualUrl('');
+            setShowManualInput(false);
         }
     }, [selectedCameraId]);
 
@@ -79,8 +83,8 @@ export default function ZoneSettings() {
                 .single();
 
             if (error) {
-                console.log('No snapshot found for this camera yet');
-                toast.info('No snapshot available. Waiting for first detection event...');
+                console.log('No snapshot found for this camera yet — user can paste a manual URL');
+                // Don't toast an error — the empty state UI explains what to do
             } else if (data) {
                 setSnapshotUrl(data.snapshot_url);
                 toast.success('Snapshot loaded successfully');
@@ -277,11 +281,16 @@ export default function ZoneSettings() {
 
             if (insertError) throw insertError;
 
-            // Notify AI server to reload zones
+            // Notify AI server to reload zones (legacy ack) + force immediate config refresh
             await supabase.from('system_commands').insert({
                 command_type: 'update_zones',
                 status: 'pending',
                 payload: { camera_id: selectedCameraId }
+            });
+            await supabase.from('system_commands').insert({
+                command_type: 'force_refresh',
+                status: 'pending',
+                payload: { source: 'zones', camera_id: selectedCameraId }
             });
 
             toast.success(`✅ ${zones.length} zone(s) saved successfully!`);
@@ -448,14 +457,53 @@ export default function ZoneSettings() {
                                 )}
                             </div>
                         ) : (
-                            <div className="text-center text-slate-500">
-                                <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                                    <Video size={32} />
+                            <div className="text-center text-slate-500 px-6 py-8 w-full">
+                                <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Video size={28} />
                                 </div>
-                                <h3 className="text-lg font-semibold text-slate-300">No Snapshot Available</h3>
-                                <p className="text-sm max-w-sm mx-auto mt-2">
-                                    Wait for an event to trigger on this camera to capture a reference image for drawing.
+                                <h3 className="text-base font-semibold text-slate-300 mb-1">No Snapshot Available</h3>
+                                <p className="text-xs text-slate-500 max-w-xs mx-auto mb-5">
+                                    A snapshot is captured automatically after the first AI detection event on this camera.
+                                    Until then, paste any image URL below to use as a drawing reference.
                                 </p>
+                                {!showManualInput ? (
+                                    <button
+                                        onClick={() => setShowManualInput(true)}
+                                        className="flex items-center gap-2 mx-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors"
+                                    >
+                                        <Plus size={14} /> Use Custom Image URL
+                                    </button>
+                                ) : (
+                                    <div className="flex gap-2 max-w-sm mx-auto">
+                                        <input
+                                            autoFocus
+                                            type="url"
+                                            value={manualUrl}
+                                            onChange={e => setManualUrl(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' && manualUrl.trim()) {
+                                                    setSnapshotUrl(manualUrl.trim());
+                                                    setShowManualInput(false);
+                                                    toast.success('Custom image loaded');
+                                                }
+                                            }}
+                                            placeholder="https://... (image URL)"
+                                            className="flex-1 px-3 py-2 text-xs rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                if (manualUrl.trim()) {
+                                                    setSnapshotUrl(manualUrl.trim());
+                                                    setShowManualInput(false);
+                                                    toast.success('Custom image loaded');
+                                                }
+                                            }}
+                                            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors"
+                                        >
+                                            Load
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

@@ -3,40 +3,85 @@ import { Brain, Plus, Edit, Trash2, X, Power, Activity, Upload, FileCode, Search
 import { supabase, type AIModel, type AIServer, type Dataset } from '../lib/supabase';
 
 const MODEL_TYPES = [
-  { value: 'person_detection', label: 'Person Detection' },
-  { value: 'vehicle_detection', label: 'Vehicle Detection' },
-  { value: 'face_recognition', label: 'Face Recognition' },
-  { value: 'motion_detection', label: 'Motion Detection' },
-  { value: 'intrusion_detection', label: 'Intrusion Detection' },
-  { value: 'crowd_detection', label: 'Crowd Detection' },
-  { value: 'object_tracking', label: 'Object Tracking' },
-  { value: 'weapon_detection', label: 'Weapon Detection' },
-  { value: 'fire_detection', label: 'Fire/Smoke Detection' },
-  { value: 'animal_detection', label: 'Animal Detection' },
-  { value: 'other', label: 'Other' }
+  // Person & Behaviour
+  { value: 'person_detection',         label: 'Person Detection',          category: 'Person & Behaviour' },
+  { value: 'loitering_detection',      label: 'Loitering Detection',       category: 'Person & Behaviour' },
+  { value: 'crowd_detection',          label: 'Crowd Detection',           category: 'Person & Behaviour' },
+  { value: 'fight_detection',          label: 'Fight / Aggression',        category: 'Person & Behaviour' },
+  { value: 'fall_detection',           label: 'Fall Detection',            category: 'Person & Behaviour' },
+  { value: 'running_detection',        label: 'Running Detection',         category: 'Person & Behaviour' },
+  { value: 'tailgating_detection',     label: 'Tailgating Detection',      category: 'Person & Behaviour' },
+  { value: 'intrusion_detection',      label: 'Intrusion / Zone Breach',   category: 'Person & Behaviour' },
+  // Threat
+  { value: 'weapon_detection',         label: 'Weapon Detection',          category: 'Threat' },
+  { value: 'fire_detection',           label: 'Fire & Smoke Detection',    category: 'Threat' },
+  { value: 'smoke_detection',          label: 'Smoke Detection',           category: 'Threat' },
+  { value: 'vandalism_detection',      label: 'Vandalism Detection',       category: 'Threat' },
+  // Vehicle
+  { value: 'vehicle_detection',        label: 'Vehicle Detection',         category: 'Vehicle' },
+  { value: 'license_plate_detection',  label: 'License Plate Recognition', category: 'Vehicle' },
+  { value: 'wrong_way_detection',      label: 'Wrong-Way Detection',       category: 'Vehicle' },
+  { value: 'illegal_parking_detection',label: 'Illegal Parking',           category: 'Vehicle' },
+  { value: 'vehicle_speed_detection',  label: 'Vehicle Speed Detection',   category: 'Vehicle' },
+  // Object
+  { value: 'abandoned_object_detection',label: 'Abandoned Object',         category: 'Object Intelligence' },
+  { value: 'missing_object_detection', label: 'Missing Object',            category: 'Object Intelligence' },
+  { value: 'ppe_detection',            label: 'PPE Compliance (Hard Hat)', category: 'Object Intelligence' },
+  // Face
+  { value: 'face_detection',           label: 'Face Detection',            category: 'Face Intelligence' },
+  { value: 'unknown_face_detection',   label: 'Unknown Face Alert',        category: 'Face Intelligence' },
+  { value: 'mask_detection',           label: 'Mask Detection',            category: 'Face Intelligence' },
+  { value: 'face_recognition',         label: 'Face Recognition',          category: 'Face Intelligence' },
+  // Environmental
+  { value: 'camera_tamper_detection',  label: 'Camera Tamper Detection',   category: 'Environmental' },
+  { value: 'flood_detection',          label: 'Flood Detection',           category: 'Environmental' },
+  { value: 'motion_detection',         label: 'Motion Detection',          category: 'Environmental' },
+  // General
+  { value: 'dress_code_detection',     label: 'Dress Code / Appearance',   category: 'General' },
+  { value: 'object_tracking',          label: 'Object Tracking',           category: 'General' },
+  { value: 'animal_detection',         label: 'Animal Intrusion',          category: 'General' },
+  { value: 'other',                    label: 'Other / Custom',            category: 'General' },
 ];
+
+// Hardware badge colours
+const HW_BADGE: Record<string, string> = {
+  cpu:              'bg-emerald-100 text-emerald-700',
+  gpu_recommended:  'bg-amber-100  text-amber-700',
+  gpu_required:     'bg-red-100    text-red-700',
+};
 
 const PRETRAINED_MODELS = [
-  // Person & Intrusion (Using Standard YOLOv8)
-  { id: 'yolo_n', name: 'YOLOv8 Nano (Fastest)', type: 'person_detection', description: 'Real-time detection for edge devices. High speed.', accuracy: 80.0, version: '8.0.0', path: 'yolov8n.pt' },
-  { id: 'yolo_s', name: 'YOLOv8 Small (Balanced)', type: 'person_detection', description: 'Good balance of speed and accuracy.', accuracy: 88.0, version: '8.0.0', path: 'yolov8s.pt' },
-  { id: 'yolo_m', name: 'YOLOv8 Medium', type: 'person_detection', description: 'Higher accuracy for standard surveillance.', accuracy: 94.0, version: '8.0.0', path: 'yolov8m.pt' },
-  { id: 'yolo_x', name: 'YOLOv8 X-Large (Most Accurate)', type: 'person_detection', description: 'Maximum accuracy for critical areas. Requires GPU.', accuracy: 99.0, version: '8.0.0', path: 'yolov8x.pt' },
-
-  // Specialized (Simulated mappings for demo purposes - in real prod these would be custom trained .pt files)
-  // For now, we map them to 'yolov8n.pt' or 'yolov8n-pose.pt' etc so they at least RUN without crashing.
-
-  // Face / Pose
-  { id: 'human_pose', name: 'Human Pose Estimation', type: 'person_detection', description: 'Real-time skeletal tracking.', accuracy: 92.0, version: '8.0.0', path: 'yolov8n-pose.pt' },
-  { id: 'face_detect', name: 'Face Detection Basic', type: 'face_recognition', description: 'Standard face detection.', accuracy: 85.0, version: '8.0.0', path: 'yolov8n.pt' }, // Fallback to nano for demo
-
-  // Vehicle
-  { id: 'vehicle_basic', name: 'General Vehicle Detection', type: 'vehicle_detection', description: 'Detects cars, trucks, buses.', accuracy: 90.0, version: '8.0.0', path: 'yolov8n.pt' },
-
-  // Others (Mapped to YOLOv8n to ensure stability)
-  { id: 'weapon_detect', name: 'Weapon Detection (Demo)', type: 'weapon_detection', description: 'Standard object detection tuned for weapons.', accuracy: 85.0, version: '1.0', path: 'yolov8n.pt' },
-  { id: 'fire_detect', name: 'Fire Detection (Demo)', type: 'fire_detection', description: 'Standard object detection tuned for fire.', accuracy: 82.0, version: '1.0', path: 'yolov8n.pt' },
+  // ── Person & Behaviour ───────────────────────────────────────────────────────
+  { id: 'yolo_n',       name: 'YOLOv8 Nano — Person (Fast)',       type: 'person_detection',          description: 'Real-time on CPU. Best for edge devices.',                   accuracy: 80,  version: '8.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  { id: 'yolo_s',       name: 'YOLOv8 Small — Person (Balanced)',  type: 'person_detection',          description: 'Good balance of speed and accuracy.',                        accuracy: 88,  version: '8.0', path: 'yolov8s.pt',                   hw: 'cpu',             size: '22 MB' },
+  { id: 'yolo_m',       name: 'YOLOv8 Medium — Person (Accurate)', type: 'person_detection',          description: 'High accuracy for critical surveillance.',                    accuracy: 94,  version: '8.0', path: 'yolov8m.pt',                   hw: 'gpu_recommended', size: '52 MB' },
+  { id: 'yolo_x',       name: 'YOLOv8 X-Large — Maximum Accuracy', type: 'person_detection',          description: 'Maximum accuracy. Requires dedicated GPU.',                  accuracy: 99,  version: '8.0', path: 'yolov8x.pt',                   hw: 'gpu_required',    size: '131 MB'},
+  { id: 'loiter',       name: 'Loitering Detection',               type: 'loitering_detection',       description: 'Alert when person stays in zone. Set dwell:30 in description (seconds).', accuracy: 90, version: '1.0', path: 'yolov8n.pt',    hw: 'cpu',             size: '6 MB'  },
+  { id: 'crowd',        name: 'Crowd Detection',                   type: 'crowd_detection',           description: 'Alert when crowd exceeds threshold. Set threshold:8 in description.',    accuracy: 90, version: '1.0', path: 'yolov8n.pt',    hw: 'cpu',             size: '6 MB'  },
+  { id: 'fight',        name: 'Fight / Aggression Detection',      type: 'fight_detection',           description: 'Detects overlapping persons indicating a fight.',            accuracy: 82,  version: '1.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  { id: 'fall',         name: 'Fall Detection',                    type: 'fall_detection',            description: 'Detects horizontal bounding box — person has fallen.',       accuracy: 85,  version: '1.0', path: 'yolov8n-pose.pt',              hw: 'cpu',             size: '6 MB'  },
+  { id: 'pose',         name: 'Human Pose Estimation',             type: 'person_detection',          description: 'Full skeletal tracking — 17 keypoints per person.',          accuracy: 92,  version: '8.0', path: 'yolov8n-pose.pt',              hw: 'cpu',             size: '6 MB'  },
+  { id: 'intrusion',    name: 'Intrusion / Zone Breach',           type: 'intrusion_detection',       description: 'Alerts when any person or vehicle enters a defined zone.',   accuracy: 91,  version: '1.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  // ── Threat ──────────────────────────────────────────────────────────────────
+  { id: 'weapon',       name: 'Weapon Detection',                  type: 'weapon_detection',          description: 'Gun, knife, bat detection. Real specialized weights.',       accuracy: 85,  version: '1.0', path: 'weapon_detection.pt',          hw: 'gpu_recommended', size: '6 MB'  },
+  { id: 'fire',         name: 'Fire & Smoke Detection',            type: 'fire_detection',            description: 'Real fire/smoke trained model from HuggingFace.',           accuracy: 88,  version: '1.0', path: 'fire_detection.pt',            hw: 'cpu',             size: '6 MB'  },
+  { id: 'vandal',       name: 'Vandalism Detection',               type: 'vandalism_detection',       description: 'Sudden scene change + person presence heuristic.',          accuracy: 75,  version: '1.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  // ── Vehicle ─────────────────────────────────────────────────────────────────
+  { id: 'vehicle',      name: 'Vehicle Detection',                 type: 'vehicle_detection',         description: 'Car, truck, bus, motorcycle detection.',                    accuracy: 90,  version: '1.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  { id: 'lpr',          name: 'License Plate Recognition',         type: 'license_plate_detection',   description: 'Detects plates + reads text via PaddleOCR.',                accuracy: 92,  version: '1.0', path: 'license_plate_detection.pt',   hw: 'cpu',             size: '6 MB'  },
+  { id: 'parking',      name: 'Illegal Parking Detection',         type: 'illegal_parking_detection', description: 'Vehicle stationary in zone. Set minutes:5 in description.', accuracy: 88,  version: '1.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  // ── Object Intelligence ──────────────────────────────────────────────────────
+  { id: 'abandoned',    name: 'Abandoned Object Detection',        type: 'abandoned_object_detection',description: 'Object left alone. Set timer:2 (minutes) in description.',  accuracy: 83,  version: '1.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  { id: 'ppe',          name: 'PPE Compliance (Hard Hat / Vest)',  type: 'ppe_detection',             description: 'Detects missing safety PPE. Real trained weights.',          accuracy: 86,  version: '1.0', path: 'ppe_detection.pt',             hw: 'cpu',             size: '6 MB'  },
+  // ── Face Intelligence ────────────────────────────────────────────────────────
+  { id: 'face',         name: 'Face Detection',                    type: 'face_detection',            description: 'Real face bounding box detection (not person class filter).', accuracy: 88, version: '1.0', path: 'face_detection.pt',            hw: 'cpu',             size: '6 MB'  },
+  { id: 'unknown_face', name: 'Unknown Face Alert',                type: 'unknown_face_detection',    description: 'Alerts on faces not in authorized library.',                accuracy: 84,  version: '1.0', path: 'face_detection.pt',            hw: 'gpu_recommended', size: '6 MB'  },
+  // ── Environmental ────────────────────────────────────────────────────────────
+  { id: 'tamper',       name: 'Camera Tamper Detection',           type: 'camera_tamper_detection',   description: 'Detects camera blocked, sprayed, or moved. No GPU needed.',  accuracy: 95,  version: '1.0', path: '',                             hw: 'cpu',             size: '0 MB'  },
+  { id: 'animal',       name: 'Animal Intrusion Detection',        type: 'animal_detection',          description: 'Detects dogs, cats, birds, horses intruding.',              accuracy: 87,  version: '1.0', path: 'yolov8n.pt',                   hw: 'cpu',             size: '6 MB'  },
+  { id: 'dresscode',    name: 'Dress Code / Appearance',           type: 'dress_code_detection',      description: 'HSV color analysis. Set required:blue,prohibited:red.',     accuracy: 78,  version: '1.0', path: 'yolov8n-seg.pt',               hw: 'cpu',             size: '6 MB'  },
 ];
+
 
 export default function AIModelManagement() {
   const [models, setModels] = useState<AIModel[]>([]);
@@ -48,6 +93,10 @@ export default function AIModelManagement() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Bulk select
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Retrain State
   const [showRetrainModal, setShowRetrainModal] = useState(false);
@@ -106,7 +155,7 @@ export default function AIModelManagement() {
 
   const loadModels = async () => {
     const { data } = await supabase.from('ai_models').select('*').order('created_at', { ascending: false });
-    if (data) setModels(data);
+    if (data) { setModels(data); setSelectedIds(new Set()); }
   };
 
   const loadServers = async () => {
@@ -291,6 +340,34 @@ export default function AIModelManagement() {
     setPretrainedSearch('');
   };
 
+  // ── Bulk helpers ──────────────────────────────────────────────────────────
+  const filteredModels = models.filter(m =>
+    m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (m.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    m.model_type.includes(searchQuery.toLowerCase())
+  );
+  const allSelected = filteredModels.length > 0 && filteredModels.every(m => selectedIds.has(m.id));
+  const toggleSelect    = (id: string) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleSelectAll = () => setSelectedIds(allSelected ? new Set() : new Set(filteredModels.map(m => m.id)));
+  const bulkDelete = async () => {
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} model(s)? Their storage files will also be removed.`)) return;
+    setBulkDeleting(true);
+    try {
+      const ids = [...selectedIds];
+      // Remove storage files
+      const paths = models.filter(m => ids.includes(m.id) && m.model_path).map(m => m.model_path!);
+      if (paths.length) await supabase.storage.from('ai-models').remove(paths);
+      // Remove camera_models assignments
+      await supabase.from('camera_models').delete().in('ai_model_id', ids);
+      // Delete models
+      await supabase.from('ai_models').delete().in('id', ids);
+      setSelectedIds(new Set());
+      await loadModels();
+    } catch (err: any) { alert(`Bulk delete failed: ${err.message}`); }
+    finally { setBulkDeleting(false); }
+  };
+
   const getModelTypeColor = (type: string) => {
     switch (type) {
       case 'person_detection': return 'bg-blue-100 text-blue-700';
@@ -358,50 +435,105 @@ export default function AIModelManagement() {
         </div>
       </div>
 
+      {/* ── Bulk Action Toolbar ── */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-red-50 dark:bg-red-950/40
+                        border border-red-200 dark:border-red-800 rounded-xl
+                        animate-in slide-in-from-top-2 duration-200">
+          <span className="text-sm font-semibold text-red-700 dark:text-red-400">
+            {selectedIds.size} model{selectedIds.size > 1 ? 's' : ''} selected
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400
+                       bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                       rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+          >
+            Clear
+          </button>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkDeleting}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white
+                       bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition-all
+                       shadow-sm shadow-red-600/20 active:scale-95"
+          >
+            {bulkDeleting
+              ? <><RefreshCw size={13} className="animate-spin" /> Deleting…</>
+              : <><Trash2 size={13} /> Delete {selectedIds.size}</>}
+          </button>
+        </div>
+      )}
+
       <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6" : "space-y-4"}>
         {viewMode === 'list' ? (
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <table className="w-full text-left">
+            <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Name</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Version</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Type</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Accuracy</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Status</th>
-                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400">Actions</th>
+                  <th className="p-4 w-10 border border-slate-200 dark:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                      title={allSelected ? 'Deselect all' : 'Select all'}
+                    />
+                  </th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Name</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Version</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Type</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Accuracy</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Status</th>
+                  <th className="p-4 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {models.filter(m =>
-                  m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  (m.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  m.model_type.includes(searchQuery.toLowerCase())
-                ).map((model) => (
-                  <tr key={model.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                    <td className="p-4 font-medium text-slate-900 dark:text-white flex items-center gap-3">
-                      <div className="bg-purple-100 p-2 rounded-lg">
-                        <Brain className="text-purple-600" size={18} />
-                      </div>
-                      {model.name}
+                {filteredModels.map((model) => {
+                  const isSelected = selectedIds.has(model.id);
+                  return (
+                  <tr key={model.id} className={`transition-colors ${
+                    isSelected ? 'bg-red-50 dark:bg-red-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                  }`}>
+                    <td className="p-4 border border-slate-100 dark:border-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(model.id)}
+                        className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                      />
                     </td>
-                    <td className="p-4 text-slate-600 dark:text-slate-400">v{model.version}</td>
-                    <td className="p-4">
+                    <td className="p-4 font-medium text-slate-900 dark:text-white border border-slate-100 dark:border-slate-700">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-purple-100 p-2 rounded-lg">
+                          <Brain className="text-purple-600" size={18} />
+                        </div>
+                        {model.name}
+                      </div>
+                    </td>
+                    <td className="p-4 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700">v{model.version}</td>
+                    <td className="p-4 border border-slate-100 dark:border-slate-700">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${getModelTypeColor(model.model_type)}`}>
                         {MODEL_TYPES.find(t => t.value === model.model_type)?.label || model.model_type.replace('_', ' ')}
                       </span>
                     </td>
-                    <td className="p-4 font-semibold text-slate-900 dark:text-white">{model.accuracy}%</td>
-                    <td className="p-4">
+                    <td className="p-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-700">{model.accuracy}%</td>
+                    <td className="p-4 border border-slate-100 dark:border-slate-700">
                       <button
                         onClick={() => toggleModelStatus(model)}
-                        title={model.is_active ? "Click to Deactivate" : "Click to Activate"} className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${model.is_active ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 hover:text-slate-700'}`}
+                        title={model.is_active ? 'Click to Deactivate' : 'Click to Activate'}
+                        className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${
+                          model.is_active
+                            ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                            : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 hover:text-slate-700'
+                        }`}
                       >
                         <Activity size={14} className={model.is_active ? 'text-green-500' : 'text-slate-400'} />
                         {model.is_active ? 'Active' : 'Inactive'}
                       </button>
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 border border-slate-100 dark:border-slate-700">
                       <div className="flex gap-2">
                         <button onClick={() => openRetrainModal(model)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100" title="Retrain">
                           <RefreshCw size={16} />
@@ -415,7 +547,8 @@ export default function AIModelManagement() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -574,7 +707,8 @@ export default function AIModelManagement() {
                         <div className="p-1">
                           {PRETRAINED_MODELS.filter(m =>
                             m.name.toLowerCase().includes(pretrainedSearch.toLowerCase()) ||
-                            m.type.toLowerCase().includes(pretrainedSearch.toLowerCase())
+                            m.type.toLowerCase().includes(pretrainedSearch.toLowerCase()) ||
+                            m.description.toLowerCase().includes(pretrainedSearch.toLowerCase())
                           ).map(model => (
                             <div
                               key={model.id}
@@ -592,13 +726,21 @@ export default function AIModelManagement() {
                                 setSelectedFile(null);
                                 setIsPretrainedOpen(false);
                               }}
-                              className="px-3 py-2 text-sm rounded cursor-pointer hover:bg-red-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border-b border-slate-50 dark:border-slate-700 last:border-0"
+                              className="px-3 py-2.5 text-sm rounded cursor-pointer hover:bg-red-50 dark:hover:bg-slate-600 border-b border-slate-50 dark:border-slate-700 last:border-0"
                             >
-                              <div className="font-medium text-slate-900 dark:text-white">{model.name}</div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400 flex justify-between mt-1">
-                                <span>{model.type.replace('_', ' ')}</span>
-                                <span className="font-medium text-green-600 dark:text-green-400">{model.accuracy}% Acc</span>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="font-medium text-slate-900 dark:text-white text-sm leading-tight">{model.name}</div>
+                                <div className="flex gap-1 shrink-0">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${HW_BADGE[model.hw] || 'bg-slate-100 text-slate-600'}`}>
+                                    {model.hw === 'cpu' ? 'CPU' : model.hw === 'gpu_recommended' ? 'GPU+' : 'GPU'}
+                                  </span>
+                                  {model.size !== '0 MB' && (
+                                    <span className="text-[10px] font-medium text-slate-400 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded">{model.size}</span>
+                                  )}
+                                </div>
                               </div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">{model.description}</div>
+                              <div className="text-[10px] font-semibold text-green-600 dark:text-green-400 mt-1">{model.accuracy}% accuracy</div>
                             </div>
                           ))}
                           {PRETRAINED_MODELS.filter(m =>

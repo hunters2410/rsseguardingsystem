@@ -209,8 +209,27 @@ class EventCleanup:
         for i in range(0, len(event_ids), batch_size):
             batch_ids = event_ids[i:i + batch_size]
             try:
+                # FIRST: Extract storage paths to delete from storage as well
+                batch_full_data = self.supabase.table('events').select('snapshot_url').in_('id', batch_ids).execute()
+                storage_paths = []
+                for row in batch_full_data.data:
+                    url = row.get('snapshot_url')
+                    if url and 'event-snapshots/' in url:
+                        # Extract relative path from URL (anything after bucket name)
+                        path = url.split('event-snapshots/')[-1]
+                        storage_paths.append(path)
+                
+                # SECOND: Delete from Database
                 self.supabase.table('events').delete().in_('id', batch_ids).execute()
                 self.stats["deleted"] += len(batch_ids)
+                
+                # THIRD: Delete from Storage
+                if storage_paths:
+                    try:
+                        self.supabase.storage.from_("event-snapshots").remove(storage_paths)
+                        self.log(f"  Successfully removed {len(storage_paths)} files from storage")
+                    except Exception as storage_err:
+                        self.log(f"  Warning: Database records deleted, but storage cleanup failed for {len(storage_paths)} files: {storage_err}", force=True)
             except Exception as e:
                 self.log(f"Error deleting batch: {e}", force=True)
                 self.stats["errors"] += len(batch_ids)
