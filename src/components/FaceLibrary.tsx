@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Users, Upload, Trash2, Plus, RefreshCw, Eye, EyeOff, Save, X, Palette, Check, Camera, AlertCircle } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { Users, Upload, Trash2, Plus, RefreshCw, Eye, EyeOff, Save, X, Palette, Check, Camera, AlertCircle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { supabase, type KnownFace, type KnownFacePhoto, type KnownColorProfile } from '../lib/supabase';
 import { toast } from 'sonner';
 
@@ -113,27 +113,27 @@ function WebcamCapture({ onCapture, onClose }: { onCapture: (file: File) => void
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl p-4 w-full max-w-sm mx-4 animate-in zoom-in-95 duration-200">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-4 w-full max-w-sm mx-4 animate-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-700">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            <Camera size={15} className="text-blue-600" /> Take Photo
+          <p className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+            <Camera size={15} className="text-blue-600 dark:text-blue-400" /> Take Photo
           </p>
-          <button onClick={close} className="p-1 rounded-lg hover:bg-slate-100 transition-colors">
-            <X size={16} className="text-slate-400" />
+          <button onClick={close} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+            <X size={16} className="text-slate-400 dark:text-slate-500" />
           </button>
         </div>
 
         {/* Camera error */}
         {camError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3">
-            <p className="text-xs text-red-700 font-semibold">{camError}</p>
-            <p className="text-[10px] text-red-500 mt-1">Check that no other app is using the camera, or use Gallery instead.</p>
+          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-xl p-3 mb-3">
+            <p className="text-xs text-red-700 dark:text-red-300 font-semibold">{camError}</p>
+            <p className="text-[10px] text-red-500 dark:text-red-400 mt-1">Check that no other app is using the camera, or use Gallery instead.</p>
           </div>
         )}
 
         {/* Viewfinder */}
-        <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-[4/3] mb-3 border-2 border-slate-200">
+        <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-[4/3] mb-3 border-2 border-slate-200 dark:border-slate-700">
           <video
             ref={videoRef}
             autoPlay playsInline muted
@@ -237,29 +237,29 @@ function PhotoGallery({ faceId, faceName: _faceName }: { faceId: string; faceNam
   const missing = ANGLES.slice(0, 5).filter(a => !covered.has(a.value));
 
   return (
-    <div className="border-t border-slate-100 pt-3 mt-3 space-y-3">
+    <div className="border-t border-slate-100 dark:border-slate-700 pt-3 mt-3 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Photo Angles ({photos.length}/7)</p>
+        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Photo Angles ({photos.length}/7)</p>
         {photos.length < 5 && (
-          <span className="flex items-center gap-1 text-[9px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+          <span className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800/60">
             <AlertCircle size={9} /> Need {5 - photos.length} more
           </span>
         )}
-        {photos.length >= 5 && <span className="text-[9px] text-emerald-700 bg-emerald-50 font-bold px-2 py-0.5 rounded-full">✓ Accurate</span>}
+        {photos.length >= 5 && <span className="text-[9px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 font-bold px-2 py-0.5 rounded-full">✓ Accurate</span>}
       </div>
 
       {missing.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
-          <p className="text-[10px] text-amber-700 font-semibold">Missing angles: {missing.map(a => a.label).join(', ')}</p>
-          <p className="text-[9px] text-amber-500 mt-0.5">Add these for 90%+ recognition accuracy</p>
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-lg p-2">
+          <p className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold">Missing angles: {missing.map(a => a.label).join(', ')}</p>
+          <p className="text-[9px] text-amber-500 dark:text-amber-400 mt-0.5">Add these for 90%+ recognition accuracy</p>
         </div>
       )}
 
-      {loading ? <p className="text-[10px] text-slate-400">Loading...</p> : (
+      {loading ? <p className="text-[10px] text-slate-400 dark:text-slate-500">Loading...</p> : (
         <div className="flex flex-wrap gap-2">
           {photos.map(p => (
             <div key={p.id} className="relative group">
-              <img src={p.photo_url} className="w-14 h-14 rounded-xl object-cover border-2 border-slate-200" />
+              <img src={p.photo_url} className="w-14 h-14 rounded-xl object-cover border-2 border-slate-200 dark:border-slate-700" />
               <span className="absolute bottom-0 left-0 right-0 text-[8px] text-center bg-black/60 text-white rounded-b-xl py-0.5">
                 {ANGLES.find(a => a.value === p.angle)?.label || p.angle}
               </span>
@@ -275,8 +275,8 @@ function PhotoGallery({ faceId, faceName: _faceName }: { faceId: string; faceNam
       {/* Angle selector + upload buttons */}
       <div className="space-y-2">
         <select value={angle} onChange={e => setAngle(e.target.value as KnownFacePhoto['angle'])}
-          className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20">
-          {ANGLES.map(a => <option key={a.value} value={a.value}>{a.label} — {a.tip}</option>)}
+          className="w-full px-2 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/20">
+          {ANGLES.map(a => <option key={a.value} value={a.value} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200">{a.label} — {a.tip}</option>)}
         </select>
         <div className="flex gap-2">
           <button
@@ -289,7 +289,7 @@ function PhotoGallery({ faceId, faceName: _faceName }: { faceId: string; faceNam
           <button
             onClick={() => ref.current?.click()}
             disabled={uploading}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-slate-700 text-xs font-bold rounded-lg transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-60 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
           >
             {uploading ? <RefreshCw size={11} className="animate-spin" /> : <Upload size={11} />}
             {uploading ? 'Uploading...' : 'Gallery'}
@@ -322,9 +322,14 @@ function FacesTab() {
   const [photoPreview, setPhotoPreview] = useState('');
   const [saving, setSaving] = useState(false);
   const [showWebcam, setShowWebcam] = useState(false);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { setPage(1); }, [search, roleFilter]);
 
   const load = async () => {
     setLoading(true);
@@ -332,6 +337,22 @@ function FacesTab() {
     if (data) setFaces(data as KnownFace[]);
     setLoading(false);
   };
+
+  const filteredFaces = useMemo(() => {
+    return faces.filter(f => {
+      const matchSearch = f.name.toLowerCase().includes(search.toLowerCase()) ||
+        (f.department || '').toLowerCase().includes(search.toLowerCase()) ||
+        (f.notes || '').toLowerCase().includes(search.toLowerCase());
+      const matchRole = roleFilter === 'all' || f.role === roleFilter;
+      return matchSearch && matchRole;
+    });
+  }, [faces, search, roleFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredFaces.length / pageSize));
+  const paginatedFaces = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredFaces.slice(start, start + pageSize);
+  }, [filteredFaces, page, pageSize]);
 
   const pickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -385,11 +406,11 @@ function FacesTab() {
   return (
     <div className="space-y-4">
       {/* Info banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex gap-3">
+      <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl p-3 flex gap-3">
         <span className="text-2xl">🔍</span>
         <div>
-          <p className="text-xs font-bold text-blue-800">Multi-Angle Face Library — Accuracy Guide</p>
-          <p className="text-[11px] text-blue-600 mt-0.5">
+          <p className="text-xs font-bold text-blue-800 dark:text-blue-200">Multi-Angle Face Library — Accuracy Guide</p>
+          <p className="text-[11px] text-blue-600 dark:text-blue-300 mt-0.5">
             Add <strong>5+ photos per person</strong> from different angles for 90%+ recognition accuracy.
             1 photo ≈ 50% | 3 photos ≈ 75% | 5+ photos ≈ 90%+.
             After adding a person, expand their card to upload angle photos (left, right, overhead, different lighting).
@@ -402,8 +423,8 @@ function FacesTab() {
         {ROLES.map(r => {
           const count = faces.filter(f => f.role === r.value && f.is_active).length;
           return (
-            <div key={r.value} className="bg-white rounded-xl border border-slate-200 p-3 text-center">
-              <p className="text-xl font-black text-slate-800">{count}</p>
+            <div key={r.value} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
+              <p className="text-xl font-black text-slate-800 dark:text-white">{count}</p>
               <p className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${r.color} mt-1`}>{r.label}</p>
             </div>
           );
@@ -412,21 +433,21 @@ function FacesTab() {
 
       {/* Add form */}
       {showAdd && (
-        <div className="bg-white rounded-2xl border-2 border-blue-300 shadow-lg p-4 space-y-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-blue-300 dark:border-blue-600 shadow-lg p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-slate-800">Add Authorized Person</p>
-            <button onClick={() => { setShowAdd(false); setPhotoPreview(''); setPhotoFile(null); }}><X size={16} className="text-slate-400" /></button>
+            <p className="text-sm font-bold text-slate-800 dark:text-white">Add Authorized Person</p>
+            <button onClick={() => { setShowAdd(false); setPhotoPreview(''); setPhotoFile(null); }}><X size={16} className="text-slate-400 dark:text-slate-500" /></button>
           </div>
 
           {/* Photo picker — webcam or gallery */}
           <div className="flex items-start gap-4">
             {/* Preview thumbnail */}
             <div
-              className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden bg-slate-50 shrink-0 relative"
+              className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0 relative"
             >
               {photoPreview
                 ? <img src={photoPreview} className="w-full h-full object-cover" alt="preview" />
-                : <div className="text-center"><Camera size={18} className="text-slate-300 mx-auto" /><p className="text-[9px] text-slate-400 mt-1">Preview</p></div>
+                : <div className="text-center"><Camera size={18} className="text-slate-300 dark:text-slate-600 mx-auto" /><p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1">Preview</p></div>
               }
             </div>
             {/* Capture buttons */}
@@ -442,12 +463,12 @@ function FacesTab() {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors"
               >
                 <Upload size={13} /> Choose from Gallery
               </button>
               {photoPreview && (
-                <p className="text-[9px] text-emerald-600 font-semibold text-center">Photo selected — ready to save</p>
+                <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold text-center">Photo selected — ready to save</p>
               )}
             </div>
           </div>
@@ -455,9 +476,9 @@ function FacesTab() {
           {/* Name & Department */}
           <div className="space-y-2">
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-              placeholder="Full name *" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
+              placeholder="Full name *" className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder:text-slate-400 dark:placeholder:text-slate-500" />
             <input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}
-              placeholder="Department (optional)" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
+              placeholder="Department (optional)" className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder:text-slate-400 dark:placeholder:text-slate-500" />
           </div>
 
           {/* Webcam modal */}
@@ -474,17 +495,17 @@ function FacesTab() {
 
           {/* Role */}
           <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Role</p>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Role</p>
             <div className="flex gap-2 flex-wrap">
               {ROLES.map(r => (
                 <button key={r.value} onClick={() => setForm({ ...form, role: r.value })}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${form.role === r.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${form.role === r.value ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300'}`}>
                   {r.label}
                 </button>
               ))}
             </div>
             {form.role === 'blacklist' && (
-              <p className="text-[10px] text-red-600 bg-red-50 rounded-lg p-2 mt-2 border border-red-200">
+              <p className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 rounded-lg p-2 mt-2 border border-red-200 dark:border-red-800/60">
                 ⚠️ <strong>Blacklist</strong>: An alert will fire EVERY TIME this person's face is detected, even though they are in the library.
               </p>
             )}
@@ -492,7 +513,7 @@ function FacesTab() {
 
           <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
             placeholder="Notes (optional)" rows={2}
-            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none" />
+            className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500" />
 
           <button onClick={save} disabled={saving}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-2.5 rounded-xl text-sm font-bold transition-all">
@@ -502,51 +523,97 @@ function FacesTab() {
         </div>
       )}
 
+      {/* Search and Role Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, department, or notes..."
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          />
+        </div>
+        <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0">
+          <button
+            onClick={() => setRoleFilter('all')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+              roleFilter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            All Roles ({faces.length})
+          </button>
+          {ROLES.map(r => {
+            const count = faces.filter(f => f.role === r.value).length;
+            return (
+              <button
+                key={r.value}
+                onClick={() => setRoleFilter(r.value)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                  roleFilter === r.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                {r.label} ({count})
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Add button */}
       {!showAdd && (
         <button onClick={() => setShowAdd(true)}
-          className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-2xl text-sm font-bold text-slate-500 hover:text-blue-600 transition-all">
-          <Plus size={16} /> Add Person to Face Library
+          className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-2xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all bg-white/50 dark:bg-slate-800/50">
+          <Plus size={15} /> Add Person to Face Library
         </button>
       )}
 
       {/* Face cards grid */}
-      {faces.length === 0 && !showAdd && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
-          <div className="text-5xl mb-3">👤</div>
-          <p className="text-sm font-bold text-slate-700">No authorized faces yet</p>
-          <p className="text-xs text-slate-400 mt-1">Add employee and VIP photos so the AI can identify authorized people.</p>
+      {filteredFaces.length === 0 && !showAdd && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 text-center">
+          <div className="text-4xl mb-2">👤</div>
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+            {search ? 'No matching people found' : 'No authorized faces yet'}
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+            {search ? 'Try adjusting your search or role filters.' : 'Add employee and VIP photos so the AI can identify authorized people.'}
+          </p>
         </div>
       )}
-      <div className="space-y-3">
-        {faces.map(face => {
+      <div className="space-y-2.5">
+        {paginatedFaces.map(face => {
           const roleDef = ROLES.find(r => r.value === face.role);
           const isExpanded = expanded === face.id;
           return (
             <div key={face.id}
-              className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${face.is_active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
+              className={`bg-white dark:bg-slate-800 rounded-2xl border shadow-sm overflow-hidden transition-all ${face.is_active ? 'border-slate-200 dark:border-slate-700' : 'border-slate-100 dark:border-slate-800 opacity-60'}`}>
               <div className="flex items-center gap-3 p-3">
                 <img src={face.photo_url} alt={face.name}
-                  className="w-14 h-14 rounded-xl object-cover object-top shrink-0 border border-slate-200" />
+                  className="w-12 h-12 rounded-xl object-cover object-top shrink-0 border border-slate-200 dark:border-slate-700" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-bold text-slate-800 truncate">{face.name}</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{face.name}</p>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${roleDef?.color}`}>{roleDef?.label}</span>
                     {!face.is_active && <span className="text-[9px] text-slate-400 font-bold">INACTIVE</span>}
                   </div>
-                  {face.department && <p className="text-[10px] text-slate-400">{face.department}</p>}
+                  {face.department && <p className="text-[10px] text-slate-400 dark:text-slate-500">{face.department}</p>}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => setExpanded(isExpanded ? null : face.id)}
-                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold transition-colors">
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-300 text-[10px] font-bold transition-colors">
                     <Camera size={11} /> Photos
                   </button>
                   <button onClick={() => toggleActive(face)}
-                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
-                    {face.is_active ? <Eye size={13} className="text-emerald-600" /> : <EyeOff size={13} className="text-slate-400" />}
+                    className="p-1.5 rounded-lg bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors">
+                    {face.is_active ? <Eye size={13} className="text-emerald-600 dark:text-emerald-400" /> : <EyeOff size={13} className="text-slate-400" />}
                   </button>
                   <button onClick={() => remove(face)}
-                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-red-50 transition-colors">
+                    className="p-1.5 rounded-lg bg-slate-50 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors">
                     <Trash2 size={13} className="text-red-500" />
                   </button>
                 </div>
@@ -560,6 +627,74 @@ function FacesTab() {
           );
         })}
       </div>
+
+      {/* Faces Pagination Footer */}
+      {filteredFaces.length > 0 && (
+        <div className="p-3 border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <span>
+              Showing <strong className="text-slate-700 dark:text-slate-200">{((page - 1) * pageSize) + 1}</strong> to <strong className="text-slate-700 dark:text-slate-200">{Math.min(page * pageSize, filteredFaces.length)}</strong> of <strong className="text-slate-700 dark:text-slate-200">{filteredFaces.length}</strong> people
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="ml-2 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none"
+            >
+              <option value={5}>5 per page</option>
+              <option value={10}>10 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(prev => Math.max(1, prev - 1))}
+              disabled={page === 1}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <ChevronLeft size={13} />
+              <span>Prev</span>
+            </button>
+
+            <div className="flex items-center gap-1 px-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                .map((p, idx, arr) => {
+                  const prevP = arr[idx - 1];
+                  const hasGap = prevP && p - prevP > 1;
+                  return (
+                    <div key={p} className="flex items-center">
+                      {hasGap && <span className="px-1 text-slate-400">...</span>}
+                      <button
+                        onClick={() => setPage(p)}
+                        className={`w-6 h-6 rounded-md text-xs font-medium transition ${
+                          page === p
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <button
+              onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={page === totalPages}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <span>Next</span>
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -609,11 +744,11 @@ function ColorProfilesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 flex gap-3">
+      <div className="bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 rounded-xl p-3 flex gap-3">
         <span className="text-2xl">👕</span>
         <div>
-          <p className="text-xs font-bold text-purple-800">How Color Profiles work</p>
-          <p className="text-[11px] text-purple-600 mt-0.5">
+          <p className="text-xs font-bold text-purple-800 dark:text-purple-200">How Color Profiles work</p>
+          <p className="text-[11px] text-purple-600 dark:text-purple-300 mt-0.5">
             Create saved color rule sets here. Then in <strong>Alert Configuration → Advanced → Dress Code model</strong>,
             your saved profiles can be applied instantly. The AI server scans person crops for the colors defined in these profiles.
           </p>
@@ -622,14 +757,14 @@ function ColorProfilesTab() {
 
       {/* Add form */}
       {showAdd && (
-        <div className="bg-white rounded-2xl border-2 border-purple-300 shadow-lg p-4 space-y-4">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border-2 border-purple-300 dark:border-purple-600 shadow-lg p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-slate-800">New Color Profile</p>
-            <button onClick={() => setShowAdd(false)}><X size={16} className="text-slate-400" /></button>
+            <p className="text-sm font-bold text-slate-800 dark:text-white">New Color Profile</p>
+            <button onClick={() => setShowAdd(false)}><X size={16} className="text-slate-400 dark:text-slate-500" /></button>
           </div>
           <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
             placeholder="Profile name (e.g. Security Guard Uniform)"
-            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500" />
+            className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 placeholder:text-slate-400 dark:placeholder:text-slate-500" />
 
           <ColorPicker label="✅ Required Colors (must be wearing)"
             selected={form.required_colors}
@@ -640,24 +775,24 @@ function ColorProfilesTab() {
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Body Region</p>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Body Region</p>
               {(['top', 'bottom', 'full'] as const).map(r => (
-                <label key={r} className="flex items-center gap-2 mb-1.5 cursor-pointer">
+                <label key={r} className="flex items-center gap-2 mb-1.5 cursor-pointer text-slate-700 dark:text-slate-300">
                   <input type="radio" checked={form.region === r} onChange={() => setForm({ ...form, region: r })} className="accent-purple-600" />
                   <span className="text-xs capitalize">{r === 'top' ? '👕 Upper' : r === 'bottom' ? '👖 Lower' : '🧍 Full'}</span>
                 </label>
               ))}
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Coverage</p>
-              <span className="text-sm font-black text-purple-700">{Math.round(form.coverage * 100)}%</span>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Coverage</p>
+              <span className="text-sm font-black text-purple-700 dark:text-purple-400">{Math.round(form.coverage * 100)}%</span>
               <input type="range" min={0.05} max={0.50} step={0.05} value={form.coverage}
                 onChange={e => setForm({ ...form, coverage: parseFloat(e.target.value) })}
                 className="w-full accent-purple-600 mt-1" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Cooldown</p>
-              <span className="text-sm font-black text-slate-700">{form.cooldown}s</span>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Cooldown</p>
+              <span className="text-sm font-black text-slate-700 dark:text-slate-200">{form.cooldown}s</span>
               <input type="range" min={30} max={600} step={30} value={form.cooldown}
                 onChange={e => setForm({ ...form, cooldown: parseInt(e.target.value) })}
                 className="w-full accent-slate-500 mt-1" />
@@ -674,49 +809,49 @@ function ColorProfilesTab() {
 
       {!showAdd && (
         <button onClick={() => setShowAdd(true)}
-          className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-300 hover:border-purple-400 rounded-2xl text-sm font-bold text-slate-500 hover:text-purple-600 transition-all">
+          className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-purple-400 dark:hover:border-purple-500 rounded-2xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 transition-all bg-white/50 dark:bg-slate-800/50">
           <Plus size={16} /> New Color Profile
         </button>
       )}
 
       {profiles.length === 0 && !showAdd && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-10 text-center">
           <div className="text-5xl mb-3">🎨</div>
-          <p className="text-sm font-bold text-slate-700">No color profiles yet</p>
-          <p className="text-xs text-slate-400 mt-1">Create reusable color rule sets for uniform enforcement, safety compliance, and access control.</p>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No color profiles yet</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Create reusable color rule sets for uniform enforcement, safety compliance, and access control.</p>
         </div>
       )}
 
       <div className="space-y-3">
         {profiles.map(profile => (
-          <div key={profile.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <div key={profile.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-bold text-slate-800">{profile.name}</p>
+              <p className="text-sm font-bold text-slate-800 dark:text-white">{profile.name}</p>
               <button onClick={() => remove(profile.id, profile.name)}
-                className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors">
+                className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 text-red-400 hover:text-red-600 transition-colors">
                 <Trash2 size={14} />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
               {profile.required_colors.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1.5">✅ Required</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1.5">✅ Required</p>
                   <ColorDots colors={profile.required_colors} />
-                  <p className="text-[10px] text-slate-500 mt-1">{profile.required_colors.join(', ')}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">{profile.required_colors.join(', ')}</p>
                 </div>
               )}
               {profile.prohibited_colors.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1.5">🚫 Prohibited</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1.5">🚫 Prohibited</p>
                   <ColorDots colors={profile.prohibited_colors} />
-                  <p className="text-[10px] text-slate-500 mt-1">{profile.prohibited_colors.join(', ')}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">{profile.prohibited_colors.join(', ')}</p>
                 </div>
               )}
             </div>
-            <div className="flex gap-3 text-[10px] text-slate-400 pt-2 border-t border-slate-100">
-              <span>Region: <strong className="text-slate-600 capitalize">{profile.region}</strong></span>
-              <span>Coverage: <strong className="text-slate-600">{Math.round(profile.coverage * 100)}%</strong></span>
-              <span>Cooldown: <strong className="text-slate-600">{profile.cooldown}s</strong></span>
+            <div className="flex gap-3 text-[10px] text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-700">
+              <span>Region: <strong className="text-slate-600 dark:text-slate-300 capitalize">{profile.region}</strong></span>
+              <span>Coverage: <strong className="text-slate-600 dark:text-slate-300">{Math.round(profile.coverage * 100)}%</strong></span>
+              <span>Cooldown: <strong className="text-slate-600 dark:text-slate-300">{profile.cooldown}s</strong></span>
             </div>
           </div>
         ))}
@@ -725,37 +860,450 @@ function ColorProfilesTab() {
   );
 }
 
+// ── Unknown Faces Tab ─────────────────────────────────────────────────────────
+function UnknownFacesTab() {
+  const [unknowns, setUnknowns] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [labelModal, setLabelModal] = useState<any | null>(null);
+  const [addToModal, setAddToModal] = useState<any | null>(null);
+  const [knownFaces, setKnownFaces] = useState<any[]>([]);
+  const [form, setForm] = useState({ name: '', role: 'employee', department: '' });
+  const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const fetchUnknowns = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase
+        .from('unknown_faces')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setUnknowns(data || []);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  const totalPages = Math.max(1, Math.ceil(unknowns.length / pageSize));
+  const paginatedUnknowns = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return unknowns.slice(start, start + pageSize);
+  }, [unknowns, page, pageSize]);
+
+  const fetchKnownFaces = useCallback(async () => {
+    const { data } = await supabase
+      .from('known_faces')
+      .select('id, name, role, photo_url')
+      .eq('is_active', true)
+      .order('name');
+    setKnownFaces(data || []);
+  }, []);
+
+  useEffect(() => { fetchUnknowns(); fetchKnownFaces(); }, []);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    const iv = setInterval(fetchUnknowns, 30000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const dismiss = async (id: string) => {
+    await supabase.from('unknown_faces').update({ status: 'dismissed' }).eq('id', id);
+    setUnknowns(prev => prev.filter(u => u.id !== id));
+    toast.success('Face dismissed');
+  };
+
+  const labelAsNew = async () => {
+    if (!labelModal || !form.name.trim()) return;
+    setSaving(true);
+    try {
+      // 1. Create known_faces entry
+      const { data: newFace, error: faceErr } = await supabase
+        .from('known_faces')
+        .insert({
+          name: form.name.trim(),
+          role: form.role,
+          department: form.department.trim() || null,
+          photo_url: labelModal.crop_url,
+          is_active: true,
+        })
+        .select()
+        .single();
+      if (faceErr) throw faceErr;
+
+      // 2. Add crop as known_face_photo
+      await supabase.from('known_face_photos').insert({
+        known_face_id: newFace.id,
+        photo_url: labelModal.crop_url,
+        angle: 'other',
+      });
+
+      // 3. Mark unknown as labeled
+      await supabase.from('unknown_faces').update({
+        status: 'labeled',
+        labeled_as: newFace.id,
+      }).eq('id', labelModal.id);
+
+      setUnknowns(prev => prev.filter(u => u.id !== labelModal.id));
+      setLabelModal(null);
+      setForm({ name: '', role: 'employee', department: '' });
+      toast.success(`Labeled as "${newFace.name}" — AI will now recognize this person`);
+      fetchKnownFaces();
+    } catch (err: any) {
+      toast.error('Label failed: ' + (err.message || err));
+    }
+    setSaving(false);
+  };
+
+  const addToExisting = async (knownFaceId: string) => {
+    if (!addToModal) return;
+    setSaving(true);
+    try {
+      // Add as additional photo
+      await supabase.from('known_face_photos').insert({
+        known_face_id: knownFaceId,
+        photo_url: addToModal.crop_url,
+        angle: 'other',
+      });
+
+      // Mark unknown as labeled
+      await supabase.from('unknown_faces').update({
+        status: 'labeled',
+        labeled_as: knownFaceId,
+      }).eq('id', addToModal.id);
+
+      const person = knownFaces.find(f => f.id === knownFaceId);
+      setUnknowns(prev => prev.filter(u => u.id !== addToModal.id));
+      setAddToModal(null);
+      toast.success(`Added as photo for "${person?.name || 'person'}" — improving recognition accuracy`);
+    } catch (err: any) {
+      toast.error('Add failed: ' + (err.message || err));
+    }
+    setSaving(false);
+  };
+
+  const ROLES = [
+    { value: 'employee',   label: 'Employee',   color: 'bg-blue-100 text-blue-700' },
+    { value: 'vip',        label: 'VIP',         color: 'bg-purple-100 text-purple-700' },
+    { value: 'contractor', label: 'Contractor',  color: 'bg-amber-100 text-amber-700' },
+    { value: 'blacklist',  label: 'Blacklist',   color: 'bg-red-100 text-red-700' },
+  ];
+
+  const timeAgo = (ts: string) => {
+    const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Info banner */}
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex items-start gap-3">
+        <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Unknown Faces Queue</p>
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+            These faces were detected but couldn't be matched to anyone in your library.
+            Label them to teach the AI for future recognition, or dismiss false positives.
+          </p>
+        </div>
+      </div>
+
+      {/* Action bar */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          <span className="font-bold text-slate-800 dark:text-white">{unknowns.length}</span> pending faces
+        </p>
+        <button onClick={fetchUnknowns}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <RefreshCw size={13} /> Refresh
+        </button>
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <div className="text-center py-10 text-sm text-slate-400 dark:text-slate-500">Loading unknown faces...</div>
+      )}
+
+      {/* Empty state */}
+      {!loading && unknowns.length === 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-10 text-center">
+          <div className="text-5xl mb-3">✅</div>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No unknown faces pending</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            When the AI detects an unrecognized face, it will appear here for you to label.
+          </p>
+        </div>
+      )}
+
+      {/* Grid of unknown face cards */}
+      {!loading && unknowns.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {paginatedUnknowns.map(face => (
+            <div key={face.id}
+              className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
+              {/* Face crop image */}
+              <div className="aspect-square bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
+                <img src={face.crop_url} alt="Unknown face"
+                  className="w-full h-full object-cover" />
+                <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                  {face.confidence}%
+                </div>
+              </div>
+
+              {/* Info */}
+              <div className="p-2.5">
+                <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                  📷 {face.camera_name || 'Unknown Camera'}
+                </p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{timeAgo(face.created_at)}</p>
+
+                {/* Action buttons */}
+                <div className="flex gap-1.5 mt-2">
+                  <button onClick={() => { setLabelModal(face); setForm({ name: '', role: 'employee', department: '' }); }}
+                    className="flex-1 py-1.5 text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">
+                    Label
+                  </button>
+                  <button onClick={() => { setAddToModal(face); fetchKnownFaces(); }}
+                    className="flex-1 py-1.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg transition-colors">
+                    Match
+                  </button>
+                  <button onClick={() => dismiss(face.id)}
+                    className="py-1.5 px-2 text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-colors">
+                    <X size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Unknown Faces Pagination Footer */}
+      {!loading && unknowns.length > 0 && (
+        <div className="p-3 border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <span>
+              Showing <strong className="text-slate-700 dark:text-slate-200">{((page - 1) * pageSize) + 1}</strong> to <strong className="text-slate-700 dark:text-slate-200">{Math.min(page * pageSize, unknowns.length)}</strong> of <strong className="text-slate-700 dark:text-slate-200">{unknowns.length}</strong> faces
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="ml-2 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none"
+            >
+              <option value={5}>5 per page</option>
+              <option value={10}>10 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(prev => Math.max(1, prev - 1))}
+              disabled={page === 1}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <ChevronLeft size={13} />
+              <span>Prev</span>
+            </button>
+
+            <div className="flex items-center gap-1 px-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                .map((p, idx, arr) => {
+                  const prevP = arr[idx - 1];
+                  const hasGap = prevP && p - prevP > 1;
+                  return (
+                    <div key={p} className="flex items-center">
+                      {hasGap && <span className="px-1 text-slate-400">...</span>}
+                      <button
+                        onClick={() => setPage(p)}
+                        className={`w-6 h-6 rounded-md text-xs font-medium transition ${
+                          page === p
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <button
+              onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={page === totalPages}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <span>Next</span>
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Label as New Person Modal ── */}
+      {labelModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLabelModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">Label Unknown Face</h3>
+              <button onClick={() => setLabelModal(null)} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Preview */}
+            <div className="flex justify-center">
+              <img src={labelModal.crop_url} alt="Face"
+                className="w-32 h-32 rounded-2xl object-cover border-2 border-slate-200 dark:border-slate-700" />
+            </div>
+            <p className="text-center text-xs text-slate-400 dark:text-slate-500">
+              Camera: {labelModal.camera_name} · Confidence: {labelModal.confidence}%
+            </p>
+
+            {/* Form */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Full Name *</label>
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. John Smith"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Role</label>
+                <div className="flex gap-2 mt-1">
+                  {ROLES.map(r => (
+                    <button key={r.value} onClick={() => setForm({ ...form, role: r.value })}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg border-2 transition-all ${
+                        form.role === r.value
+                          ? `${r.color} border-current`
+                          : 'border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+                      }`}>
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Department</label>
+                <input type="text" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}
+                  placeholder="e.g. Security, Management"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+              </div>
+            </div>
+
+            <button onClick={labelAsNew} disabled={saving || !form.name.trim()}
+              className="w-full py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl transition-colors flex items-center justify-center gap-2">
+              <Save size={15} /> {saving ? 'Saving...' : 'Save to Face Library'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add to Existing Person Modal ── */}
+      {addToModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setAddToModal(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">Match to Existing Person</h3>
+              <button onClick={() => setAddToModal(null)} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Preview */}
+            <div className="flex justify-center">
+              <img src={addToModal.crop_url} alt="Face"
+                className="w-24 h-24 rounded-2xl object-cover border-2 border-slate-200 dark:border-slate-700" />
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+              Select a person to add this face as an additional photo angle.
+            </p>
+
+            {/* Known faces list */}
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {knownFaces.length === 0 && (
+                <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No known faces in library yet.</p>
+              )}
+              {knownFaces.map(person => (
+                <button key={person.id} onClick={() => addToExisting(person.id)} disabled={saving}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500 transition-all text-left disabled:opacity-50">
+                  <img src={person.photo_url} alt={person.name}
+                    className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{person.name}</p>
+                    <p className="text-[10px] text-slate-400 capitalize">{person.role}</p>
+                  </div>
+                  <Plus size={16} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Export ───────────────────────────────────────────────────────────────
 export default function FaceLibrary() {
-  const [tab, setTab] = useState<'faces' | 'colors'>('faces');
+  const [tab, setTab] = useState<'faces' | 'unknown' | 'colors'>('faces');
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    supabase.from('unknown_faces').select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+      .then(({ count }) => setPendingCount(count || 0));
+  }, [tab]);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex items-center gap-3">
         <div className="p-2 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20">
           <Users className="text-white" size={18} />
         </div>
         <div>
-          <h1 className="text-lg font-black text-slate-900">Detection Library</h1>
-          <p className="text-[11px] text-slate-500 uppercase tracking-widest font-bold">Known Faces & Color Profiles</p>
+          <h1 className="text-lg font-black text-slate-900 dark:text-white">Detection Library</h1>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-widest font-bold">Known Faces & Color Profiles</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+      <div className="flex gap-1 bg-slate-100 dark:bg-slate-900 rounded-xl p-1 border border-slate-200/50 dark:border-slate-700">
         <button onClick={() => setTab('faces')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${tab === 'faces' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${tab === 'faces' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
           <Users size={15} /> Known Faces
         </button>
+        <button onClick={() => setTab('unknown')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all relative ${tab === 'unknown' ? 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
+          <AlertCircle size={15} /> Unknown
+          {pendingCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+              {pendingCount > 9 ? '9+' : pendingCount}
+            </span>
+          )}
+        </button>
         <button onClick={() => setTab('colors')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${tab === 'colors' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${tab === 'colors' ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
           <Palette size={15} /> Color Profiles
         </button>
       </div>
 
-      {tab === 'faces'  && <FacesTab />}
-      {tab === 'colors' && <ColorProfilesTab />}
+      {tab === 'faces'   && <FacesTab />}
+      {tab === 'unknown' && <UnknownFacesTab />}
+      {tab === 'colors'  && <ColorProfilesTab />}
     </div>
   );
 }

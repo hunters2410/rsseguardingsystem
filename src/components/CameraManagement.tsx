@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Camera, Plus, Edit, Trash2, X, Brain, Search,
   RefreshCw, Wifi, WifiOff, Settings2, Eye, EyeOff,
-  LayoutGrid, LayoutList, ShieldCheck, ShieldAlert
+  LayoutGrid, LayoutList, ShieldCheck, ShieldAlert,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import CameraModelAssignment from './CameraModelAssignment';
 import { supabase, type Camera as CameraType } from '../lib/supabase';
@@ -39,6 +40,8 @@ export default function CameraManagement() {
   const [cameras, setCameras]                 = useState<CameraType[]>([]);
   const [search, setSearch]                   = useState('');
   const [viewMode, setViewMode]               = useState<'grid' | 'list'>('list');
+  const [currentPage, setCurrentPage]         = useState(1);
+  const [pageSize, setPageSize]               = useState(12);
   const [showModal, setShowModal]             = useState(false);
   const [editingCamera, setEditingCamera]     = useState<CameraType | null>(null);
   const [activeAI, setActiveAI]               = useState<CameraType | null>(null);
@@ -55,6 +58,7 @@ export default function CameraManagement() {
   useEffect(() => { load(); }, []);
   // Clear selection whenever the camera list reloads
   useEffect(() => { setSelectedIds(new Set()); }, [cameras.length]);
+  useEffect(() => { setCurrentPage(1); }, [search]);
 
   /* ── data ── */
   const load = async () => {
@@ -235,10 +239,15 @@ export default function CameraManagement() {
   /* ──────────────────────────────────────────────────────────────────────────
      RENDER
   ───────────────────────────────────────────────────────────────────────────── */
-  return (
-    <div className="space-y-4 animate-in fade-in duration-300">
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginatedCameras = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
 
-      {/* ── Header ── */}
+  return (
+    <div className="space-y-5 max-w-7xl mx-auto">
+      {/* ── Page Header ── */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3
                       bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800
                       rounded-2xl p-4 shadow-sm">
@@ -377,7 +386,7 @@ export default function CameraManagement() {
               </label>
             </div>
           )}
-          {filtered.map(cam => {
+          {paginatedCameras.map(cam => {
             const si = statusInfo(cam.status);
             const ipDisplay = cam.ip_address || cam.location?.split('@')[1]?.split('/')[0] || '—';
             const isSelected = selectedIds.has(cam.id);
@@ -493,7 +502,7 @@ export default function CameraManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filtered.map(cam => {
+              {paginatedCameras.map(cam => {
                 const si = statusInfo(cam.status);
                 const ipDisplay = cam.ip_address || cam.location?.split('@')[1]?.split('/')[0] || '—';
                 const isSelected = selectedIds.has(cam.id);
@@ -589,6 +598,74 @@ export default function CameraManagement() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Camera Pagination Controls ── */}
+      {filtered.length > 0 && (
+        <div className="p-3 border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <span>
+              Showing <strong className="text-slate-700 dark:text-slate-200">{((currentPage - 1) * pageSize) + 1}</strong> to <strong className="text-slate-700 dark:text-slate-200">{Math.min(currentPage * pageSize, filtered.length)}</strong> of <strong className="text-slate-700 dark:text-slate-200">{filtered.length}</strong> cameras
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="ml-2 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none"
+            >
+              <option value={8}>8 per page</option>
+              <option value={12}>12 per page</option>
+              <option value={24}>24 per page</option>
+              <option value={48}>48 per page</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <ChevronLeft size={13} />
+              <span>Prev</span>
+            </button>
+
+            <div className="flex items-center gap-1 px-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                .map((p, idx, arr) => {
+                  const prevP = arr[idx - 1];
+                  const hasGap = prevP && p - prevP > 1;
+                  return (
+                    <div key={p} className="flex items-center">
+                      {hasGap && <span className="px-1 text-slate-400">...</span>}
+                      <button
+                        onClick={() => setCurrentPage(p)}
+                        className={`w-6 h-6 rounded-md text-xs font-medium transition ${
+                          currentPage === p
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <span>Next</span>
+              <ChevronRight size={13} />
+            </button>
+          </div>
         </div>
       )}
 

@@ -4,3 +4,13 @@ supabase>=2.10.0
 python-dotenv
 numpy
 requests
+torch
+paddleocr
+psutil
+Pillow
+google-generativeai>=0.8.0
+imagehash>=4.3.0
+# face_recognition requires dlib + CMake + C++ compiler.
+# The AI server falls back to histogram matching if this is not installed.
+# Uncomment the line below if your environment supports it:
+# face_recognition

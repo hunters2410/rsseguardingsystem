@@ -48,8 +48,10 @@ wheels/
 
 # Logs
 *.log
+*.log.*
 debug_filter.log
-ai-server/ai_log.txt
+ai-server/ai_log.txt*
+ai_log.txt*
 
 # Temporary/Debug Scripts
 debug_*.py

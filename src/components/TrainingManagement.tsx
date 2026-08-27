@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Upload, Database, Play, Activity, Trash2, Search, LayoutList, LayoutGrid } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Upload, Database, Play, Activity, Trash2, Search, LayoutList, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase, type Dataset, type TrainingJob, type AIServer } from '../lib/supabase';
 
 export default function TrainingManagement() {
@@ -8,6 +8,14 @@ export default function TrainingManagement() {
     const [servers, setServers] = useState<AIServer[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
+    // Pagination for Datasets
+    const [datasetPage, setDatasetPage] = useState(1);
+    const [datasetPageSize, setDatasetPageSize] = useState(6);
+
+    // Pagination for Training Jobs
+    const [jobsPage, setJobsPage] = useState(1);
+    const [jobsPageSize, setJobsPageSize] = useState(5);
 
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -101,6 +109,29 @@ export default function TrainingManagement() {
         }
     };
 
+    const filteredDatasets = useMemo(() => {
+        return datasets.filter(ds =>
+            ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (ds.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [datasets, searchQuery]);
+
+    const totalDatasetPages = Math.max(1, Math.ceil(filteredDatasets.length / datasetPageSize));
+    const paginatedDatasets = useMemo(() => {
+        const start = (datasetPage - 1) * datasetPageSize;
+        return filteredDatasets.slice(start, start + datasetPageSize);
+    }, [filteredDatasets, datasetPage, datasetPageSize]);
+
+    const totalJobPages = Math.max(1, Math.ceil(jobs.length / jobsPageSize));
+    const paginatedJobs = useMemo(() => {
+        const start = (jobsPage - 1) * jobsPageSize;
+        return jobs.slice(start, start + jobsPageSize);
+    }, [jobs, jobsPage, jobsPageSize]);
+
+    useEffect(() => {
+        setDatasetPage(1);
+    }, [searchQuery]);
+
     return (
         <div className="space-y-8">
 
@@ -164,10 +195,7 @@ export default function TrainingManagement() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                    {datasets.filter(ds =>
-                                        ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                        (ds.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-                                    ).map(ds => (
+                                    {paginatedDatasets.map(ds => (
                                         <tr key={ds.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
                                             <td className="p-4 font-medium text-slate-900 dark:text-white flex items-center gap-3">
                                                 <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
@@ -194,14 +222,18 @@ export default function TrainingManagement() {
                                             </td>
                                         </tr>
                                     ))}
+                                    {filteredDatasets.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="p-8 text-center text-slate-400">
+                                                No datasets found.
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
                     ) : (
-                        datasets.filter(ds =>
-                            ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            (ds.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-                        ).map(ds => (
+                        paginatedDatasets.map(ds => (
                             <div key={ds.id} className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
@@ -231,6 +263,74 @@ export default function TrainingManagement() {
                         ))
                     )}
                 </div>
+
+                {/* Datasets Pagination Footer */}
+                {filteredDatasets.length > 0 && (
+                    <div className="p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                            <span>
+                                Showing <strong className="text-slate-700 dark:text-slate-200">{((datasetPage - 1) * datasetPageSize) + 1}</strong> to <strong className="text-slate-700 dark:text-slate-200">{Math.min(datasetPage * datasetPageSize, filteredDatasets.length)}</strong> of <strong className="text-slate-700 dark:text-slate-200">{filteredDatasets.length}</strong> datasets
+                            </span>
+                            <select
+                                value={datasetPageSize}
+                                onChange={(e) => {
+                                    setDatasetPageSize(Number(e.target.value));
+                                    setDatasetPage(1);
+                                }}
+                                className="ml-2 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none"
+                            >
+                                <option value={3}>3 per page</option>
+                                <option value={6}>6 per page</option>
+                                <option value={12}>12 per page</option>
+                                <option value={24}>24 per page</option>
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setDatasetPage(prev => Math.max(1, prev - 1))}
+                                disabled={datasetPage === 1}
+                                className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                            >
+                                <ChevronLeft size={13} />
+                                <span>Prev</span>
+                            </button>
+
+                            <div className="flex items-center gap-1 px-1">
+                                {Array.from({ length: totalDatasetPages }, (_, i) => i + 1)
+                                    .filter(p => p === 1 || p === totalDatasetPages || Math.abs(p - datasetPage) <= 1)
+                                    .map((p, idx, arr) => {
+                                        const prevP = arr[idx - 1];
+                                        const hasGap = prevP && p - prevP > 1;
+                                        return (
+                                            <div key={p} className="flex items-center">
+                                                {hasGap && <span className="px-1 text-slate-400">...</span>}
+                                                <button
+                                                    onClick={() => setDatasetPage(p)}
+                                                    className={`w-6 h-6 rounded-md text-xs font-medium transition ${
+                                                        datasetPage === p
+                                                            ? 'bg-red-600 text-white shadow-sm'
+                                                            : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                                    }`}
+                                                >
+                                                    {p}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+
+                            <button
+                                onClick={() => setDatasetPage(prev => Math.min(totalDatasetPages, prev + 1))}
+                                disabled={datasetPage === totalDatasetPages}
+                                className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                            >
+                                <span>Next</span>
+                                <ChevronRight size={13} />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Training Jobs Section */}
@@ -251,7 +351,7 @@ export default function TrainingManagement() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                            {jobs.map(job => (
+                            {paginatedJobs.map(job => (
                                 <tr key={job.id}>
                                     <td className="p-4 font-medium text-slate-900 dark:text-white">
                                         {datasets.find(d => d.id === job.dataset_id)?.name || 'Unknown Dataset'}
@@ -282,6 +382,73 @@ export default function TrainingManagement() {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Training Jobs Pagination Footer */}
+                {jobs.length > 0 && (
+                    <div className="p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                            <span>
+                                Showing <strong className="text-slate-700 dark:text-slate-200">{((jobsPage - 1) * jobsPageSize) + 1}</strong> to <strong className="text-slate-700 dark:text-slate-200">{Math.min(jobsPage * jobsPageSize, jobs.length)}</strong> of <strong className="text-slate-700 dark:text-slate-200">{jobs.length}</strong> jobs
+                            </span>
+                            <select
+                                value={jobsPageSize}
+                                onChange={(e) => {
+                                    setJobsPageSize(Number(e.target.value));
+                                    setJobsPage(1);
+                                }}
+                                className="ml-2 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none"
+                            >
+                                <option value={5}>5 per page</option>
+                                <option value={10}>10 per page</option>
+                                <option value={20}>20 per page</option>
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setJobsPage(prev => Math.max(1, prev - 1))}
+                                disabled={jobsPage === 1}
+                                className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                            >
+                                <ChevronLeft size={13} />
+                                <span>Prev</span>
+                            </button>
+
+                            <div className="flex items-center gap-1 px-1">
+                                {Array.from({ length: totalJobPages }, (_, i) => i + 1)
+                                    .filter(p => p === 1 || p === totalJobPages || Math.abs(p - jobsPage) <= 1)
+                                    .map((p, idx, arr) => {
+                                        const prevP = arr[idx - 1];
+                                        const hasGap = prevP && p - prevP > 1;
+                                        return (
+                                            <div key={p} className="flex items-center">
+                                                {hasGap && <span className="px-1 text-slate-400">...</span>}
+                                                <button
+                                                    onClick={() => setJobsPage(p)}
+                                                    className={`w-6 h-6 rounded-md text-xs font-medium transition ${
+                                                        jobsPage === p
+                                                            ? 'bg-blue-600 text-white shadow-sm'
+                                                            : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                                    }`}
+                                                >
+                                                    {p}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+
+                            <button
+                                onClick={() => setJobsPage(prev => Math.min(totalJobPages, prev + 1))}
+                                disabled={jobsPage === totalJobPages}
+                                className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                            >
+                                <span>Next</span>
+                                <ChevronRight size={13} />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Upload Modal */}

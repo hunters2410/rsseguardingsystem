@@ -142,12 +142,12 @@ export default function LiveMonitoring() {
 
   const getEventColor = (type: string) => {
     if (type.includes('weapon') || type.includes('gun') || type.includes('pistol') || type.includes('rifle') || type.includes('knife') || type.includes('firearm'))
-      return 'border-l-red-500 bg-red-50';
-    if (type.includes('intrusion')) return 'border-l-orange-500 bg-orange-50';
-    if (type.includes('person')) return 'border-l-blue-500 bg-blue-50';
-    if (type.includes('vehicle')) return 'border-l-cyan-500 bg-cyan-50';
-    if (type.includes('fire')) return 'border-l-yellow-500 bg-yellow-50';
-    return 'border-l-slate-400 bg-slate-50';
+      return 'border-l-red-500 bg-red-50 dark:bg-red-950/30';
+    if (type.includes('intrusion')) return 'border-l-orange-500 bg-orange-50 dark:bg-orange-950/30';
+    if (type.includes('person')) return 'border-l-blue-500 bg-blue-50 dark:bg-blue-950/30';
+    if (type.includes('vehicle')) return 'border-l-cyan-500 bg-cyan-50 dark:bg-cyan-950/30';
+    if (type.includes('fire')) return 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/30';
+    return 'border-l-slate-400 bg-slate-50 dark:bg-slate-700/40';
   };
 
   const getGridClass = () => {
@@ -176,32 +176,32 @@ export default function LiveMonitoring() {
           <div className="flex items-center gap-3">
             <div className="w-2 h-8 bg-red-500 rounded-full" />
             <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">Live Monitoring</h1>
-              <p className="text-xs text-slate-500">Real-time video feeds · {filteredCameras.length} cameras</p>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Live Monitoring</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Real-time video feeds · {filteredCameras.length} cameras</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             {/* Live clock */}
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg border border-slate-200 text-xs font-mono">
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-mono">
               <Clock size={12} className="text-red-500" />
               {currentTime.toLocaleTimeString()}
             </div>
 
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={14} />
               <input
                 type="text"
                 placeholder="Search cameras..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg bg-white text-xs focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-700 w-40"
+                className="pl-8 pr-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-700 dark:text-slate-200 w-40 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
             {/* Grid selector */}
-            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 gap-0.5">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700 gap-0.5">
               {[
                 { cols: 1, icon: <div className="w-4 h-4 border-2 border-current rounded-sm" />, label: '1 Column' },
                 { cols: 2, icon: <LayoutGrid size={16} />, label: '2 Columns' },
@@ -214,7 +214,7 @@ export default function LiveMonitoring() {
                   title={label}
                   className={`p-1.5 rounded-md transition-all text-xs font-bold ${gridCols === cols
                     ? 'bg-red-600 text-white shadow'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200'}`}
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                 >
                   {icon}
                 </button>
@@ -223,8 +223,8 @@ export default function LiveMonitoring() {
 
             {/* Online pill */}
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${onlineCameras > 0
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-              : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${onlineCameras > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
               {onlineCameras} / {cameras.length} Online
             </div>
@@ -233,11 +233,11 @@ export default function LiveMonitoring() {
 
         {/* Camera Grid */}
         {cameras.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+          <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
             <div className="text-center">
-              <Monitor className="mx-auto text-slate-300 mb-3" size={48} />
-              <h3 className="text-base font-semibold text-slate-500 mb-1">No Cameras Found</h3>
-              <p className="text-sm text-slate-400">Add cameras in the Camera Management section.</p>
+              <Monitor className="mx-auto text-slate-300 dark:text-slate-600 mb-3" size={48} />
+              <h3 className="text-base font-semibold text-slate-500 dark:text-slate-400 mb-1">No Cameras Found</h3>
+              <p className="text-sm text-slate-400 dark:text-slate-500">Add cameras in the Camera Management section.</p>
             </div>
           </div>
         ) : (
@@ -333,68 +333,68 @@ export default function LiveMonitoring() {
       <div className="w-80 flex-shrink-0 flex flex-col gap-3">
 
         {/* AI Stats card */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
           <div className="flex items-center gap-2 mb-4">
-            <div className="p-1.5 bg-red-50 rounded-lg">
+            <div className="p-1.5 bg-red-50 dark:bg-red-950/50 rounded-lg">
               <Brain size={16} className="text-red-500" />
             </div>
-            <h3 className="text-sm font-bold text-slate-800">AI Analysis</h3>
-            <div className="ml-auto flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white">AI Analysis</h3>
+            <div className="ml-auto flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
               LIVE
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 mb-2">
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+            <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800/60 rounded-lg p-3">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Activity size={12} className="text-blue-500" />
-                <p className="text-[10px] text-blue-600 font-semibold uppercase tracking-wide">Today</p>
+                <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wide">Today</p>
               </div>
-              <p className="text-2xl font-black text-blue-900">{stats.totalToday}</p>
-              <p className="text-[10px] text-blue-500 mt-0.5">detections</p>
+              <p className="text-2xl font-black text-blue-900 dark:text-blue-200">{stats.totalToday}</p>
+              <p className="text-[10px] text-blue-500 dark:text-blue-400 mt-0.5">detections</p>
             </div>
 
-            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800/60 rounded-lg p-3">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <TrendingUp size={12} className="text-emerald-600" />
-                <p className="text-[10px] text-emerald-700 font-semibold uppercase tracking-wide">Avg Conf</p>
+                <TrendingUp size={12} className="text-emerald-600 dark:text-emerald-400" />
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold uppercase tracking-wide">Avg Conf</p>
               </div>
-              <p className="text-2xl font-black text-emerald-900">{stats.avgConfidence}%</p>
-              <p className="text-[10px] text-emerald-600 mt-0.5">accuracy</p>
+              <p className="text-2xl font-black text-emerald-900 dark:text-emerald-200">{stats.avgConfidence}%</p>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">accuracy</p>
             </div>
           </div>
 
           {stats.topType && (
-            <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 flex items-center gap-3">
-              <div className="p-1.5 bg-purple-100 rounded-lg">
-                <Zap size={14} className="text-purple-600" />
+            <div className="bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-800/60 rounded-lg p-3 flex items-center gap-3">
+              <div className="p-1.5 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+                <Zap size={14} className="text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <p className="text-[10px] text-purple-600 font-semibold uppercase tracking-wide">Top Detection</p>
-                <p className="text-sm font-bold text-purple-900 capitalize">{stats.topType.replace(/_/g, ' ')}</p>
+                <p className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-wide">Top Detection</p>
+                <p className="text-sm font-bold text-purple-900 dark:text-purple-200 capitalize">{stats.topType.replace(/_/g, ' ')}</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Events feed */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col flex-1 min-h-0">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-orange-50 rounded-lg">
+              <div className="p-1.5 bg-orange-50 dark:bg-orange-950/50 rounded-lg">
                 <Shield size={14} className="text-orange-500" />
               </div>
-              <h3 className="text-sm font-bold text-slate-800">Recent Detections</h3>
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white">Recent Detections</h3>
             </div>
-            <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-600">
               {events.length} events
             </span>
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: '460px' }}>
             {events.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+              <div className="flex flex-col items-center justify-center py-10 text-slate-400 dark:text-slate-500">
                 <Activity size={28} className="mb-2 opacity-40" />
                 <p className="text-xs">No events detected today</p>
               </div>
@@ -409,29 +409,29 @@ export default function LiveMonitoring() {
                       <img
                         src={event.snapshot_url}
                         alt={event.event_type}
-                        className="w-12 h-12 rounded-lg object-cover border border-slate-200 flex-shrink-0"
+                        className="w-12 h-12 rounded-lg object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-xl flex-shrink-0">
+                      <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-xl flex-shrink-0">
                         {getEventIcon(event.event_type)}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-800 truncate capitalize">
+                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate capitalize">
                         {event.event_type.replace(/_/g, ' ')}
                       </p>
                       <div className="flex items-center gap-1 mt-0.5">
                         <MapPin size={9} className="text-slate-400 flex-shrink-0" />
-                        <p className="text-[10px] text-slate-500 truncate">{getCameraName(event.camera_id)}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{getCameraName(event.camera_id)}</p>
                       </div>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
                           {new Date(event.created_at).toLocaleTimeString()}
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
                           (event.confidence || 0) > 80
-                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                            : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                            : 'bg-yellow-100 dark:bg-yellow-950/60 text-yellow-700 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800'
                         }`}>
                           {event.confidence}%
                         </span>
@@ -456,22 +456,22 @@ export default function LiveMonitoring() {
             style={{ maxHeight: '95vh' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-2xl flex flex-col">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
 
               {/* Modal header - sticky above video */}
-              <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0 relative z-10">
+              <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900 shrink-0 relative z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
                   <div>
-                    <h2 className="text-base font-bold text-slate-900">{selectedCamera.name}</h2>
-                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white">{selectedCamera.name}</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
                       <MapPin size={10} /> {selectedCamera.location}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedCamera(null)}
-                  className="flex items-center gap-1.5 text-slate-700 hover:text-white px-4 py-2 bg-white hover:bg-red-600 border-2 border-slate-300 hover:border-red-600 rounded-xl transition-all text-sm font-bold shadow-sm"
+                  className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 hover:text-white px-4 py-2 bg-white dark:bg-slate-800 hover:bg-red-600 dark:hover:bg-red-600 border-2 border-slate-300 dark:border-slate-700 hover:border-red-600 rounded-xl transition-all text-sm font-bold shadow-sm"
                 >
                   <X size={16} /> Close
                 </button>
@@ -491,18 +491,18 @@ export default function LiveMonitoring() {
               </div>
 
               {/* Details bar */}
-              <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
+              <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
                 {[
-                  { icon: <Wifi size={13} className="text-slate-400" />, label: 'Brand', value: selectedCamera.brand, className: 'text-slate-800' },
-                  { icon: <Zap size={13} className="text-slate-400" />, label: 'Connection', value: selectedCamera.connection_type.toUpperCase(), className: 'text-slate-800' },
-                  { icon: <Activity size={13} className="text-slate-400" />, label: 'Status', value: selectedCamera.status, className: selectedCamera.status === 'online' ? 'text-emerald-600' : 'text-red-500' },
+                  { icon: <Wifi size={13} className="text-slate-400" />, label: 'Brand', value: selectedCamera.brand, className: 'text-slate-800 dark:text-slate-200' },
+                  { icon: <Zap size={13} className="text-slate-400" />, label: 'Connection', value: selectedCamera.connection_type.toUpperCase(), className: 'text-slate-800 dark:text-slate-200' },
+                  { icon: <Activity size={13} className="text-slate-400" />, label: 'Status', value: selectedCamera.status, className: selectedCamera.status === 'online' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500' },
                   {
                     icon: <Brain size={13} className="text-slate-400" />,
                     label: 'AI Detection',
                     value: (selectedCamera.ai_model_id || modelCounts[selectedCamera.id] > 0)
                       ? `Enabled (${modelCounts[selectedCamera.id] || 1} Models)`
                       : 'Disabled',
-                    className: (selectedCamera.ai_model_id || modelCounts[selectedCamera.id] > 0) ? 'text-purple-600' : 'text-slate-400',
+                    className: (selectedCamera.ai_model_id || modelCounts[selectedCamera.id] > 0) ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400',
                   },
                 ].map(({ icon, label, value, className }) => (
                   <div key={label} className="flex items-start gap-2">

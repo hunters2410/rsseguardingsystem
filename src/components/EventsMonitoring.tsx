@@ -252,6 +252,14 @@ export default function EventsMonitoring() {
     return 'bg-slate-100 text-slate-700';
   };
 
+  const formatEventTitle = (eventType: string) => {
+    if (!eventType) return '';
+    return eventType
+      .replace(/\s*\((?:MOVING|PARKED|ARRIVING)\)/gi, '')
+      .replace(/_/g, ' ')
+      .trim();
+  };
+
   // Render rich metadata from AI event as readable badges
   const MetadataBadges = ({ metadata }: { metadata: Record<string, any> }) => {
     if (!metadata || Object.keys(metadata).length === 0) return null;
@@ -265,7 +273,6 @@ export default function EventsMonitoring() {
     if (metadata.violation_type) badges.push({ label: '⚠️', value: metadata.violation_type, color: 'bg-red-50 text-red-600 border-red-200' });
     if (metadata.plate_text) badges.push({ label: '🪧', value: metadata.plate_text, color: 'bg-indigo-50 text-indigo-700 border-indigo-300 font-bold' });
     if (metadata.vehicle) badges.push({ label: '🚗', value: metadata.vehicle, color: 'bg-sky-50 text-sky-700 border-sky-200' });
-    if (metadata.stationary_minutes) badges.push({ label: '🅿️', value: `${metadata.stationary_minutes}m parked`, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' });
     if (metadata.crowd_count) badges.push({ label: '👥', value: `${metadata.crowd_count} people`, color: 'bg-amber-50 text-amber-700 border-amber-200' });
     if (badges.length === 0) return null;
     return (
@@ -303,10 +310,8 @@ export default function EventsMonitoring() {
   }, [filter, eventTypeFilter]);
 
   return (
-    <>
-      <EventNotifications />
-      <div className="space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Events Monitoring</h1>
             <p className="text-slate-600 mt-1">AI-detected events from all cameras</p>
@@ -425,7 +430,7 @@ export default function EventsMonitoring() {
                   <option value="all">All Event Types</option>
                   {uniqueEventTypes.map((type) => (
                     <option key={type} value={type}>
-                      {type.replace('_', ' ')}
+                      {formatEventTitle(type)}
                     </option>
                   ))}
                 </select>
@@ -462,9 +467,9 @@ export default function EventsMonitoring() {
         </div>
 
         {filteredEvents.length === 0 ? (
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 p-12 text-center">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-12 text-center">
             <Bell className="mx-auto text-slate-400 mb-4" size={48} />
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">No Events</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">No Events</h3>
             <p className="text-slate-600 dark:text-slate-400">No events match your current filters</p>
           </div>
         ) : (
@@ -515,7 +520,7 @@ export default function EventsMonitoring() {
                             <div className="text-xl">{getEventTypeIcon(event.event_type)}</div>
                             <div>
                               <span className={`px-2 py-1 rounded text-xs font-medium ${getEventTypeColor(event.event_type)}`}>
-                                {event.event_type.replace(/_/g, ' ')}
+                                {formatEventTitle(event.event_type)}
                               </span>
                               <MetadataBadges metadata={event.metadata} />
                             </div>
@@ -618,7 +623,7 @@ export default function EventsMonitoring() {
                     <div className="absolute top-2 left-2 flex flex-col gap-1.5 max-w-[70%]">
                       <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-md border border-white/10 ${getEventTypeColor(event.event_type).includes('bg-red') ? 'bg-red-600/90 text-white' : 'bg-white/90 text-slate-900'
                         }`}>
-                        {getEventTypeIcon(event.event_type)} {event.event_type.replace(/_/g, ' ')}
+                        {getEventTypeIcon(event.event_type)} {formatEventTitle(event.event_type)}
                       </span>
                       {event.metadata?.person_name && (
                         <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-blue-600/90 text-white shadow-sm backdrop-blur-md">
@@ -872,6 +877,5 @@ export default function EventsMonitoring() {
           </div>
         )}
       </div>
-    </>
   );
 }

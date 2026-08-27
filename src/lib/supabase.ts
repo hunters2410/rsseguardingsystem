@@ -174,3 +174,48 @@ export type KnownColorProfile = {
   cooldown: number;              // seconds
   created_at: string;
 };
+
+// Unknown Faces — captured by AI, pending operator labeling
+export type UnknownFace = {
+  id: string;
+  camera_id: string;
+  crop_url: string;
+  snapshot_url?: string;
+  confidence: number;
+  status: 'pending' | 'labeled' | 'dismissed';
+  labeled_as?: string;           // known_faces.id when labeled
+  camera_name?: string;
+  created_at: string;
+};
+
+// Known Plates & Vehicle Directory
+export type KnownPlate = {
+  id: string;
+  plate_text: string;
+  image_hash?: string;
+  owner_name?: string;
+  vehicle_desc?: string;
+  tag: 'unknown' | 'vip' | 'staff' | 'resident' | 'visitor' | 'watchlist' | 'blocked' | string;
+  highlight_color: string;
+  alert_on_detect: boolean;
+  notes?: string;
+  source?: string;
+  times_seen: number;
+  last_seen: string;
+  created_at: string;
+};
+
+// Number Plate Detection Log
+export type NumberPlate = {
+  id: string;
+  plate_text: string;
+  camera_id: string;
+  confidence: number;
+  snapshot_url: string;
+  owner_name?: string;
+  tag?: string;
+  vehicle_state?: 'MOVING' | 'PARKED' | 'ARRIVING' | string;
+  highlight_color?: string;
+  created_at: string;
+  cameras?: { name: string };
+};

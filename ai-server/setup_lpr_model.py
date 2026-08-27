@@ -20,8 +20,8 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 1. Download Model
-# Using KeremBerke's model for License Plate Detection (YOLOv8 Nano)
-MODEL_URL = "https://huggingface.co/keremberke/yolov8n-license-plate-detection/resolve/main/best.pt"
+# High-accuracy YOLOv8 License Plate Detection
+MODEL_URL = "https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt"
 MODEL_NAME = "license_plate_detection.pt"
 LOCAL_DIR = "models"
 LOCAL_PATH = os.path.join(LOCAL_DIR, MODEL_NAME)

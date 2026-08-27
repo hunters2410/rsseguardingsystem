@@ -22,6 +22,16 @@ export default function EventNotification() {
                 async (payload) => {
                     const newEvent = payload.new as Event;
 
+                    const isPlate = newEvent.event_type?.startsWith('license plate');
+                    const alertEnabled = (newEvent.metadata as any)?.alert_on_detect;
+                    const tag = ((newEvent.metadata as any)?.tag || '').toLowerCase();
+                    const isUrgent = tag === 'watchlist' || tag === 'blocked';
+
+                    // Siren Override: If vehicle alert is disabled and not watchlist, do not play siren or show toast
+                    if (isPlate && alertEnabled === false && !isUrgent) {
+                        return;
+                    }
+
                     // Fetch camera name
                     const { data: cam } = await supabase
                         .from('cameras')

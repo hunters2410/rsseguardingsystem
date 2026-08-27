@@ -44,7 +44,7 @@ REGISTRY = {
     'vandalism_detection':       {'file': 'yolov8n.pt',               'url': None, 'yolo_name': 'yolov8n.pt',       'hw': 'cpu',             'size_mb': 6,   'notes': 'Scene change + person presence heuristic - no extra weights'},
     # Vehicle
     'vehicle_detection':         {'file': 'yolov8n.pt',               'url': None, 'yolo_name': 'yolov8n.pt',       'hw': 'cpu',             'size_mb': 6,   'notes': 'Car, truck, bus, motorcycle detection'},
-    'license_plate_detection':   {'file': 'license_plate_detection.pt','url': None, 'yolo_name': None,              'hw': 'cpu',             'size_mb': 6,   'notes': 'License plate detection + PaddleOCR text reading'},
+    'license_plate_detection':   {'file': 'license_plate_detection.pt','url': 'https://huggingface.co/Koushim/yolov8-license-plate-detection/resolve/main/best.pt', 'yolo_name': None, 'hw': 'cpu', 'size_mb': 6, 'notes': 'License plate detection + EasyOCR / PaddleOCR text reading'},
     'wrong_way_detection':       {'file': 'yolov8n.pt',               'url': None, 'yolo_name': 'yolov8n.pt',       'hw': 'cpu',             'size_mb': 6,   'notes': 'Vehicle direction tracking - alerts when moving against expected flow'},
     'illegal_parking_detection': {'file': 'yolov8n.pt',               'url': None, 'yolo_name': 'yolov8n.pt',       'hw': 'cpu',             'size_mb': 6,   'notes': 'Vehicle stationary in no-park zone > configured minutes'},
     'vehicle_speed_detection':   {'file': 'yolov8n.pt',               'url': None, 'yolo_name': 'yolov8n.pt',       'hw': 'cpu',             'size_mb': 6,   'notes': 'Vehicle centroid velocity - requires px-per-metre calibration'},

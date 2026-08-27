@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
-import { Brain, Plus, Edit, Trash2, X, Power, Activity, Upload, FileCode, Search, ChevronDown, Check, RefreshCw, Play, LayoutList, LayoutGrid } from 'lucide-react';
+import { useEffect, useState, useRef, useMemo } from 'react';
+import { Brain, Plus, Edit, Trash2, X, Power, Activity, Upload, FileCode, Search, ChevronDown, Check, RefreshCw, Play, LayoutList, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase, type AIModel, type AIServer, type Dataset } from '../lib/supabase';
 
 const MODEL_TYPES = [
@@ -93,6 +93,8 @@ export default function AIModelManagement() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(9);
 
   // Bulk select
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
@@ -340,12 +342,25 @@ export default function AIModelManagement() {
     setPretrainedSearch('');
   };
 
-  // ── Bulk helpers ──────────────────────────────────────────────────────────
-  const filteredModels = models.filter(m =>
-    m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (m.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.model_type.includes(searchQuery.toLowerCase())
-  );
+  // ── Bulk helpers & Pagination ───────────────────────────────────────────────
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  const filteredModels = useMemo(() => {
+    return models.filter(m =>
+      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.model_type.includes(searchQuery.toLowerCase())
+    );
+  }, [models, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredModels.length / pageSize));
+  const paginatedModels = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredModels.slice(start, start + pageSize);
+  }, [filteredModels, currentPage, pageSize]);
+
   const allSelected = filteredModels.length > 0 && filteredModels.every(m => selectedIds.has(m.id));
   const toggleSelect    = (id: string) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   const toggleSelectAll = () => setSelectedIds(allSelected ? new Set() : new Set(filteredModels.map(m => m.id)));
@@ -490,7 +505,7 @@ export default function AIModelManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {filteredModels.map((model) => {
+                {paginatedModels.map((model) => {
                   const isSelected = selectedIds.has(model.id);
                   return (
                   <tr key={model.id} className={`transition-colors ${
@@ -553,11 +568,7 @@ export default function AIModelManagement() {
             </table>
           </div>
         ) : (
-          models.filter(m =>
-            m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (m.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-            m.model_type.includes(searchQuery.toLowerCase())
-          ).map((model) => (
+          paginatedModels.map((model) => (
             <div key={model.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -641,6 +652,74 @@ export default function AIModelManagement() {
           ))
         )}
       </div>
+
+      {/* ── AI Model Pagination Controls ── */}
+      {filteredModels.length > 0 && (
+        <div className="p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <span>
+              Showing <strong className="text-slate-700 dark:text-slate-200">{((currentPage - 1) * pageSize) + 1}</strong> to <strong className="text-slate-700 dark:text-slate-200">{Math.min(currentPage * pageSize, filteredModels.length)}</strong> of <strong className="text-slate-700 dark:text-slate-200">{filteredModels.length}</strong> models
+            </span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="ml-2 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none"
+            >
+              <option value={6}>6 per page</option>
+              <option value={9}>9 per page</option>
+              <option value={18}>18 per page</option>
+              <option value={36}>36 per page</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <ChevronLeft size={13} />
+              <span>Prev</span>
+            </button>
+
+            <div className="flex items-center gap-1 px-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                .map((p, idx, arr) => {
+                  const prevP = arr[idx - 1];
+                  const hasGap = prevP && p - prevP > 1;
+                  return (
+                    <div key={p} className="flex items-center">
+                      {hasGap && <span className="px-1 text-slate-400">...</span>}
+                      <button
+                        onClick={() => setCurrentPage(p)}
+                        className={`w-6 h-6 rounded-md text-xs font-medium transition ${
+                          currentPage === p
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            >
+              <span>Next</span>
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {models.length === 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 p-12 text-center">
