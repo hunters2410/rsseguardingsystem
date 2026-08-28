@@ -33,7 +33,7 @@ def process_stream(camera, model, stop_event):
     model_name = model.get('name', 'Unknown Model')
     model_type = model.get('model_type', 'other')
 
-    print(f"Starting {model_name} analysis on {camera['name']}")
+    ai_logger.info(f"[{camera['name']}] Starting {model_name} ({model_type})")
 
     # Use model_hub to resolve the correct weights for this model type
     local_model_path = hub_get_model_path(model_type, model.get('model_path', '') or '')
@@ -41,15 +41,40 @@ def process_stream(camera, model, stop_event):
         local_model_path = None
 
     if local_model_path is None and model_type not in ('camera_tamper_detection', 'motion_detection', 'flood_detection'):
-        print(f"[{model_name}] No model path resolved. Aborting.")
+        ai_logger.error(f"[{model_name}] No model path resolved — aborting.")
         return
 
+    ai_model = None
+
+    # Stage 1: attempt safe load (PyTorch ≥ 2.6 default)
     try:
-        torch.serialization.add_safe_globals([ultralytics.nn.tasks.DetectionModel])
+        torch.serialization.add_safe_globals([
+            ultralytics.nn.tasks.DetectionModel,
+            ultralytics.nn.tasks.SegmentationModel,
+            ultralytics.nn.tasks.PoseModel,
+        ])
         ai_model = YOLO(local_model_path)
-    except Exception as e:
-        print(f"Error loading YOLO model: {e}")
-        return
+    except Exception as _e1:
+        # Stage 2: fallback — allow arbitrary globals for trusted local model files
+        # Needed for HuggingFace weights (face, plate, weapon, PPE) that contain
+        # extra serialised classes not in the safe-globals whitelist.
+        ai_logger.warning(
+            f"[{model_name}] Safe load failed ({type(_e1).__name__}), "
+            f"retrying with weights_only=False…"
+        )
+        _orig_load = torch.load
+        try:
+            torch.load = lambda *a, **kw: _orig_load(  # type: ignore[assignment]
+                *a, **{**kw, "weights_only": False}
+            )
+            ai_model = YOLO(local_model_path)
+            ai_logger.info(f"[{model_name}] Model loaded with weights_only=False fallback.")
+        except Exception as _e2:
+            ai_logger.error(f"[{model_name}] Failed to load model: {_e2}")
+            return
+        finally:
+            torch.load = _orig_load  # always restore
+
 
     # Use the real RTSP URL (location field) for direct camera access
     stream_source = (camera.get('location') or camera.get('stream_url') or '').strip()
@@ -68,21 +93,52 @@ def process_stream(camera, model, stop_event):
 
     # --- RETRY LOOP ---
     while not stop_event.is_set():
-        print(f"[{camera['name']}] Connecting to stream...")
-        cap = cv2.VideoCapture(stream_source)
+        ai_logger.info(f"[{camera['name']}] Connecting to stream ({model_type})…")
+
+        # Force FFMPEG backend with TCP transport and generous timeout
+        # to prevent ~70s RTSP disconnects during heavy inference (e.g. plate detection)
+        import os as _os
+        _os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|stimeout;30000000'
+        cap = cv2.VideoCapture(stream_source, cv2.CAP_FFMPEG)
 
         if not cap.isOpened():
-            print(f"[{camera['name']}] Failed to open stream. Retrying in 10s...")
+            ai_logger.warning(f"[{camera['name']}] Failed to open stream — retrying in 10s…")
             time.sleep(10)
             continue
 
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        print(f"[{camera['name']}] Stream OK. Starting inference...")
+        ai_logger.info(f"[{camera['name']}] Stream OK — inference started ({model_type})")
 
         frame_count = 0
         skip_frames = 3
         consecutive_failures = 0
         last_event_time = 0
+
+        # --- Frame-drain thread: keeps the RTSP buffer fresh so it never overflows ---
+        # Heavy model types (plate, face) run two YOLO models + OCR per frame,
+        # which can take 500ms+.  Without draining, buffered frames go stale and
+        # the camera's RTSP server closes the connection after ~60-70 s.
+        _latest_frame = [None]
+        _frame_lock = threading.Lock()
+        _drain_stop = threading.Event()
+
+        def _drain_frames():
+            while not _drain_stop.is_set() and not stop_event.is_set():
+                grabbed, f = cap.read()
+                if grabbed:
+                    with _frame_lock:
+                        _latest_frame[0] = f
+                else:
+                    time.sleep(0.005)
+
+        use_drain = model_type in (
+            'license_plate_detection', 'face_detection', 'face_recognition',
+            'unknown_face_detection',
+        )
+        if use_drain:
+            drain_thread = threading.Thread(target=_drain_frames, daemon=True)
+            drain_thread.start()
+            ai_logger.info(f"[{camera['name']}] Frame-drain thread active (heavy model: {model_type})")
 
         # Reset tracker on every (re)connect
         with _trackers_lock:
@@ -104,20 +160,33 @@ def process_stream(camera, model, stop_event):
                 alert_rules = dict(config_cache.alert_rules)
             camera_zones = zones_map.get(camera['id'], [])
 
-            ret, frame = cap.read()
-            if not ret:
-                consecutive_failures += 1
-                if consecutive_failures > 50:
-                    print(f"[{camera['name']}] Stream lost. Reconnecting...")
-                    break
-                time.sleep(0.05)
-                continue
+            # Read frame: use drain thread if active, else direct read
+            if use_drain:
+                with _frame_lock:
+                    frame = _latest_frame[0]
+                if frame is None:
+                    consecutive_failures += 1
+                    if consecutive_failures > 200:
+                        ai_logger.warning(f"[{camera['name']}] Stream lost (drain). Reconnecting…")
+                        break
+                    time.sleep(0.05)
+                    continue
+                ret = True
+            else:
+                ret, frame = cap.read()
+                if not ret:
+                    consecutive_failures += 1
+                    if consecutive_failures > 50:
+                        ai_logger.warning(f"[{camera['name']}] Stream lost. Reconnecting…")
+                        break
+                    time.sleep(0.05)
+                    continue
 
             consecutive_failures = 0
             frame_count += 1
 
             if frame_count % (skip_frames * 20) == 0:
-                print(f"[{camera['name']}] Still processing (Frame {frame_count})...")
+                ai_logger.info(f"[{camera['name']}] Still processing ({model_type}, Frame {frame_count})")
 
             if frame_count % skip_frames != 0:
                 continue
@@ -212,7 +281,8 @@ def process_stream(camera, model, stop_event):
                     last_event_time = time.time()
 
             except Exception as e:
-                print(f"Inference error: {e}")
+                print(f"Inference error [{camera['name']}]: {e}")
+                ai_logger.error(f"[{camera['name']}] Inference error: {e}")
 
             # Honour per-event cooldown without disconnecting the stream
             if time.time() - last_event_time < EVENT_COOLDOWN:
@@ -221,6 +291,13 @@ def process_stream(camera, model, stop_event):
 
             time.sleep(0.01)
 
+        # Stop drain thread before releasing capture
+        if use_drain:
+            _drain_stop.set()
+            try:
+                drain_thread.join(timeout=3)
+            except Exception:
+                pass
         cap.release()
         if stop_event.is_set():
             break

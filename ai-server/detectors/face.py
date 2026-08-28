@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from config import supabase, dress_code_last_alert
-from face_lib import match_face, _encode_image, _face_recognizer, _init_engine
+from face_lib import match_face, _encode_image, compare_embeddings
 from alerts import send_email_alert, send_sms_alert
 
 
@@ -38,25 +38,11 @@ def _is_duplicate_unknown(embedding, camera_id):
     if embedding is None:
         return False
 
-    engine = _init_engine()
-
     for entry in _unknown_cache:
         if entry['camera_id'] != camera_id:
             continue
         try:
-            if engine == 'sface' and _face_recognizer is not None:
-                score = float(_face_recognizer.match(
-                    embedding.reshape(1, -1),
-                    entry['embedding'].reshape(1, -1),
-                    cv2.FaceRecognizerSF_FR_COSINE
-                ))
-            elif engine == 'face_recognition':
-                import face_recognition as fr
-                dist = float(fr.face_distance([entry['embedding']], embedding)[0])
-                score = 1.0 - dist
-            else:
-                score = float(np.dot(embedding, entry['embedding']))
-
+            score = compare_embeddings(embedding, entry['embedding'])
             if score >= _UNKNOWN_SIMILARITY_THRESHOLD:
                 return True  # Same person already seen recently
         except Exception:

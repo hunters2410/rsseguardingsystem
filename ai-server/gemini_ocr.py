@@ -18,6 +18,7 @@ load_dotenv()
 # Gemini client
 _client = None
 _init_lock = threading.Lock()
+_init_attempted = False
 _last_request_time = 0.0
 _MIN_REQUEST_INTERVAL = 2.0  # Safe rate limit for free tier
 
@@ -34,23 +35,23 @@ PLATE_PROMPT = (
 
 def _init_gemini():
     """Lazy-initialize the google-genai Client."""
-    global _client
+    global _client, _init_attempted
     with _init_lock:
-        if _client is not None:
-            return True
-        
+        if _init_attempted:
+            return _client is not None
+        _init_attempted = True
+
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
         if not api_key:
-            print("[Gemini OCR] No GEMINI_API_KEY found in environment. Gemini OCR disabled.")
             return False
-        
+
         try:
             from google import genai
             _client = genai.Client(api_key=api_key)
             print("[Gemini OCR] Google GenAI Client ready (model: gemini-3.7-flash)")
             return True
         except Exception as e:
-            print(f"[Gemini OCR] Failed to initialize: {e}")
+            print(f"[Gemini OCR] GenAI client not available ({e}). Using local OCR.")
             _client = None
             return False
 

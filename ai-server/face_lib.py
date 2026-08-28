@@ -34,10 +34,11 @@ _SFACE_PATH = os.path.join(_MODELS_DIR, 'face_recognition_sface_2021dec.onnx')
 _YUNET_URL = 'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
 _SFACE_URL = 'https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx'
 
-# Module-level singletons
+# Module-level singletons & lock
 _face_detector = None
 _face_recognizer = None
 _engine = None  # 'face_recognition', 'sface', or 'histogram'
+_dnn_lock = threading.Lock()
 
 
 def _download_model(url: str, dest: str):
@@ -67,30 +68,34 @@ def _init_engine():
     if _engine is not None:
         return _engine
 
-    # 1. Try face_recognition (dlib)
-    try:
-        import face_recognition as _fr
-        _engine = 'face_recognition'
-        print("[FaceLib] Engine: face_recognition (dlib) — highest accuracy")
-        return _engine
-    except ImportError:
-        pass
-
-    # 2. Try OpenCV SFace DNN
-    try:
-        if _download_model(_YUNET_URL, _YUNET_PATH) and _download_model(_SFACE_URL, _SFACE_PATH):
-            _face_detector = cv2.FaceDetectorYN.create(_YUNET_PATH, '', (320, 320), 0.6, 0.3, 5000)
-            _face_recognizer = cv2.FaceRecognizerSF.create(_SFACE_PATH, '')
-            _engine = 'sface'
-            print("[FaceLib] Engine: OpenCV SFace DNN — high accuracy, no C++ needed")
+    with _dnn_lock:
+        if _engine is not None:
             return _engine
-    except Exception as e:
-        print(f"[FaceLib] SFace init failed: {e}")
 
-    # 3. Histogram fallback
-    _engine = 'histogram'
-    print("[FaceLib] Engine: histogram fallback — low accuracy")
-    return _engine
+        # 1. Try face_recognition (dlib)
+        try:
+            import face_recognition as _fr
+            _engine = 'face_recognition'
+            print("[FaceLib] Engine: face_recognition (dlib) — highest accuracy")
+            return _engine
+        except ImportError:
+            pass
+
+        # 2. Try OpenCV SFace DNN
+        try:
+            if _download_model(_YUNET_URL, _YUNET_PATH) and _download_model(_SFACE_URL, _SFACE_PATH):
+                _face_detector = cv2.FaceDetectorYN.create(_YUNET_PATH, '', (320, 320), 0.6, 0.3, 5000)
+                _face_recognizer = cv2.FaceRecognizerSF.create(_SFACE_PATH, '')
+                _engine = 'sface'
+                print("[FaceLib] Engine: OpenCV SFace DNN — high accuracy, no C++ needed")
+                return _engine
+        except Exception as e:
+            print(f"[FaceLib] SFace init failed: {e}")
+
+        # 3. Histogram fallback
+        _engine = 'histogram'
+        print("[FaceLib] Engine: histogram fallback — low accuracy")
+        return _engine
 
 
 def _encode_image(img_bgr, is_library: bool = False):
@@ -107,26 +112,52 @@ def _encode_image(img_bgr, is_library: bool = False):
         h, w = img_bgr.shape[:2]
         if h < 20 or w < 20:
             return None
-        _face_detector.setInputSize((w, h))
-        _, faces = _face_detector.detect(img_bgr)
-        if faces is None or len(faces) == 0:
-            if is_library:
-                # If YuNet can't find landmarks in a pre-cropped library portrait,
-                # resize and extract features directly
-                resized = cv2.resize(img_bgr, (112, 112))
-                feature = _face_recognizer.feature(resized)
-                return feature.flatten()
-            # For live CCTV stream crops: reject if no clear face landmarks are detected
-            return None
-        face = faces[0]
-        aligned = _face_recognizer.alignCrop(img_bgr, face)
-        feature = _face_recognizer.feature(aligned)
-        return feature.flatten()
+        with _dnn_lock:
+            if _face_detector is None or _face_recognizer is None:
+                return None
+            _face_detector.setInputSize((w, h))
+            _, faces = _face_detector.detect(img_bgr)
+            if faces is None or len(faces) == 0:
+                if is_library:
+                    # If YuNet can't find landmarks in a pre-cropped library portrait,
+                    # resize and extract features directly
+                    resized = cv2.resize(img_bgr, (112, 112))
+                    feature = _face_recognizer.feature(resized)
+                    return feature.flatten()
+                # For live CCTV stream crops: reject if no clear face landmarks are detected
+                return None
+            face = faces[0]
+            aligned = _face_recognizer.alignCrop(img_bgr, face)
+            feature = _face_recognizer.feature(aligned)
+            return feature.flatten()
 
     else:  # histogram
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         hist = cv2.calcHist([img_rgb], [0, 1, 2], None, [8, 8, 8], [0, 256] * 3)
         return cv2.normalize(hist, hist).flatten()
+
+
+def compare_embeddings(emb1, emb2) -> float:
+    """Compare two face embeddings safely under lock. Returns similarity score (0.0 to 1.0)."""
+    engine = _init_engine()
+    if emb1 is None or emb2 is None:
+        return 0.0
+
+    if engine == 'face_recognition':
+        import face_recognition as fr
+        dist = float(fr.face_distance([emb1], emb2)[0])
+        return max(0.0, 1.0 - dist)
+    elif engine == 'sface':
+        with _dnn_lock:
+            if _face_recognizer is None:
+                return 0.0
+            return float(_face_recognizer.match(
+                emb1.reshape(1, -1),
+                emb2.reshape(1, -1),
+                cv2.FaceRecognizerSF_FR_COSINE
+            ))
+    else:
+        return float(np.dot(emb1, emb2))
 
 
 def load_face_library(force: bool = False):
@@ -213,17 +244,20 @@ def match_face(face_crop_bgr, threshold: float = 0.55):
             # SFace uses cosine similarity — higher = better match
             best_score, best_entry = 0.0, None
             second_score = 0.0
-            for e in entries:
-                score = float(_face_recognizer.match(
-                    query_enc.reshape(1, -1),
-                    e['encoding'].reshape(1, -1),
-                    cv2.FaceRecognizerSF_FR_COSINE
-                ))
-                if score > best_score:
-                    second_score = best_score
-                    best_score, best_entry = score, e
-                elif score > second_score:
-                    second_score = score
+            with _dnn_lock:
+                if _face_recognizer is None:
+                    return False, 'Unknown', '', '', 0.0
+                for e in entries:
+                    score = float(_face_recognizer.match(
+                        query_enc.reshape(1, -1),
+                        e['encoding'].reshape(1, -1),
+                        cv2.FaceRecognizerSF_FR_COSINE
+                    ))
+                    if score > best_score:
+                        second_score = best_score
+                        best_score, best_entry = score, e
+                    elif score > second_score:
+                        second_score = score
 
             # Strict CCTV threshold: 0.55+ (55%) prevents distant/blurry false matches
             sface_threshold = max(threshold, 0.55)

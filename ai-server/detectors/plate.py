@@ -18,7 +18,7 @@ import numpy as np
 from collections import defaultdict
 from ultralytics import YOLO
 
-from config import supabase, plate_cooldowns, ocr_reader
+from config import supabase, plate_cooldowns, ocr_reader, ai_logger
 from alerts import send_email_alert, send_sms_alert
 
 # Import Gemini OCR and Plate Memory
@@ -91,7 +91,13 @@ def _get_vehicle_detector():
     with _vehicle_detector_lock:
         if _vehicle_detector is None:
             try:
-                _vehicle_detector = YOLO('yolov8n.pt')
+                import torch
+                _orig_load = torch.load
+                try:
+                    torch.load = lambda *a, **kw: _orig_load(*a, **{**kw, "weights_only": False})
+                    _vehicle_detector = YOLO('yolov8n.pt')
+                finally:
+                    torch.load = _orig_load
             except Exception as e:
                 print(f"[ALPR] Could not load vehicle detector: {e}")
     return _vehicle_detector
@@ -172,47 +178,35 @@ def rectify_zim_plate(raw_text):
 
 
 def _preprocess_pipelines(crop):
-    """Generate preprocessed versions optimized for embossed yellow plates.
-    Includes binarized, inverted, raw color, and grayscale versions at multiple scales."""
+    """Generate 3 fast preprocessed versions optimized for yellow/white plates:
+    1. Sharpened Grayscale (best for clean embossed font)
+    2. Adaptive Otsu (best for high contrast characters)
+    3. CLAHE Enhanced (best for uneven lighting/shadows)
+    """
     h, w = crop.shape[:2]
     images = []
     
-    for scale_name, scale, sigma, alpha in [
-        ("3x", 3.0, 2.0, 2.0),
-        ("4x", 4.0, 2.5, 2.2),
-        ("5x", 5.0, 3.0, 2.5),
-    ]:
-        resized = cv2.resize(crop, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
-        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-        
-        # Sharpened Otsu
-        gauss = cv2.GaussianBlur(gray, (0, 0), sigma)
-        sharp = cv2.addWeighted(gray, alpha, gauss, -(alpha - 1.0), 0)
-        _, otsu = cv2.threshold(sharp, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        if np.mean(otsu) < 127:
-            otsu = cv2.bitwise_not(otsu)
-        
-        images.append((f"otsu_{scale_name}", otsu))
-        images.append((f"otsu_inv_{scale_name}", cv2.bitwise_not(otsu)))
-        
-        # At 5x, also try raw color and enhanced grayscale
-        # (EasyOCR sometimes reads digits better on unprocessed images)
-        if scale_name == "5x":
-            images.append(("color_5x", resized))
-            images.append(("gray_5x", cv2.cvtColor(resized, cv2.COLOR_GRAY2BGR) if len(resized.shape) == 2 else resized))
-            # Sharpened grayscale (no binarization)
-            sharp_gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY) if len(resized.shape) == 3 else resized
-            gauss_g = cv2.GaussianBlur(sharp_gray, (0, 0), 1.5)
-            sharpened_gray = cv2.addWeighted(sharp_gray, 1.8, gauss_g, -0.8, 0)
-            images.append(("sharp_gray_5x", sharpened_gray))
+    # 3x Lanczos scale
+    resized = cv2.resize(crop, (int(w * 3.0), int(h * 3.0)), interpolation=cv2.INTER_LANCZOS4)
+    gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
     
-    # CLAHE at 5x
-    r5 = cv2.resize(crop, (int(w * 5), int(h * 5)), interpolation=cv2.INTER_LANCZOS4)
-    lab = cv2.cvtColor(r5, cv2.COLOR_BGR2LAB)
+    # 1. Sharpened Grayscale
+    gauss = cv2.GaussianBlur(gray, (0, 0), 1.5)
+    sharp = cv2.addWeighted(gray, 1.8, gauss, -0.8, 0)
+    images.append(("sharp_gray_3x", sharp))
+    
+    # 2. Otsu Binarized
+    _, otsu = cv2.threshold(sharp, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if np.mean(otsu) < 127:
+        otsu = cv2.bitwise_not(otsu)
+    images.append(("otsu_3x", otsu))
+    
+    # 3. CLAHE
+    lab = cv2.cvtColor(resized, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
     cl = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(l)
     enhanced = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2BGR)
-    images.append(("clahe_5x", enhanced))
+    images.append(("clahe_3x", enhanced))
     
     return images
 
@@ -402,10 +396,11 @@ class VehicleSpatialTracker:
     3. DEPARTURE & RE-ENTRY: If the vehicle vacates the spot (>90s unseen), the lock is released.
        When it returns, it is treated as a new arrival.
     """
-    def __init__(self, stationary_pixel_thresh=40, departure_timeout=90.0, motion_cooldown=300.0):
+    def __init__(self, stationary_pixel_thresh=40, departure_timeout=90.0, motion_cooldown=30.0, parked_cooldown=60.0):
         self.stationary_pixel_thresh = stationary_pixel_thresh
         self.departure_timeout = departure_timeout
         self.motion_cooldown = motion_cooldown
+        self.parked_cooldown = parked_cooldown
         self.lock = threading.Lock()
         self._vehicles = {}
 
@@ -437,11 +432,11 @@ class VehicleSpatialTracker:
                     'first_seen': now,
                     'last_seen': now,
                     'last_committed': now,
-                    'state': 'MOVING',
+                    'state': 'PARKED',
                     'committed_count': 1,
                     'position_history': [(cx, cy, now)],
                 }
-                return True, 'MOVING', 'Initial vehicle detection'
+                return True, 'PARKED', 'Initial vehicle detection'
             
             v = self._vehicles[key]
             prev_cx = v['cx']
@@ -470,49 +465,31 @@ class VehicleSpatialTracker:
             is_stationary = max(recent_drifts) <= self.stationary_pixel_thresh
             
             if is_stationary:
-                duration_present = now - v['first_seen']
+                v['state'] = 'PARKED'
+                v['cx'] = cx
+                v['cy'] = cy
                 
-                # If it was moving and has now stayed stationary for >= 2 seconds: mark as PARKED
-                if v['state'] != 'PARKED' and duration_present >= 2.0:
-                    v['state'] = 'PARKED'
-                    v['cx'] = cx
-                    v['cy'] = cy
-                    
-                    # If we only committed once on initial motion and it has been >= 20s, commit confirmed PARKED state
-                    if time_since_commit > 20.0 and v['committed_count'] < 2:
-                        v['last_committed'] = now
-                        v['committed_count'] += 1
-                        return True, 'PARKED', 'Vehicle parked in position'
-                    else:
-                        # Otherwise suppress duplicate (already recorded on arrival)
-                        return False, 'PARKED', 'Vehicle parked (duplicate suppressed)'
-                
-                # If already in PARKED state, STRICTLY SUPPRESS all duplicate commits!
-                return False, 'PARKED', f'Parked in place at ({prev_cx},{prev_cy})'
+                # Allow periodic detection of stationary/parked vehicles (every 60s)
+                if time_since_commit >= self.parked_cooldown:
+                    v['last_committed'] = now
+                    v['committed_count'] += 1
+                    return True, 'PARKED', f'Stationary / Parked vehicle ({int(time_since_commit)}s periodic log)'
+                else:
+                    return False, 'PARKED', f'Parked in place at ({prev_cx},{prev_cy})'
             
             else:
                 # Vehicle is moving (drift > threshold)
                 v['cx'] = cx
                 v['cy'] = cy
+                v['state'] = 'MOVING'
                 
-                if v['state'] == 'PARKED':
-                    v['state'] = 'MOVING'
-                    v['first_seen'] = now
-                    # Only re-commit departure motion if it has been away from commit window
-                    if time_since_commit > self.motion_cooldown:
-                        v['last_committed'] = now
-                        v['committed_count'] += 1
-                        return True, 'MOVING', 'Vehicle departed from parking bay'
-                    else:
-                        return False, 'MOVING', 'Moving within cooldown'
-                
-                # Moving vehicle: suppress continuous multi-frame spam
-                if time_since_commit < self.motion_cooldown:
+                # Moving vehicle: log every motion_cooldown seconds
+                if time_since_commit >= self.motion_cooldown:
+                    v['last_committed'] = now
+                    v['committed_count'] += 1
+                    return True, 'MOVING', 'Active moving pass'
+                else:
                     return False, 'MOVING', f'Moving in view ({int(time_since_commit)}s < {int(self.motion_cooldown)}s)'
-                
-                v['last_committed'] = now
-                v['committed_count'] += 1
-                return True, 'MOVING', 'Active moving pass'
 
 # Global Spatial Tracking Instance
 spatial_tracker = VehicleSpatialTracker()
@@ -655,9 +632,13 @@ def _commit_plate(frame, plate_crop, x1, y1, x2, y2,
                     "confidence": round(confidence * 100, 1),
                     "snapshot_url": crop_url or snapshot_url,
                 }).execute()
-        print(f"[{camera['name']}] Synced to DB: {plate_text} [{vehicle_state}] (Owner: {owner_name or 'Unassigned'}, Tag: {tag}, via {source})", flush=True)
+        msg = f"[{camera['name']}] Synced to DB: {plate_text} [{vehicle_state}] (Owner: {owner_name or 'Unassigned'}, Tag: {tag}, via {source})"
+        print(msg, flush=True)
+        ai_logger.info(msg)
     except Exception as e:
-        print(f"[{camera['name']}] DB insert error: {e}")
+        err_msg = f"[{camera['name']}] DB insert error: {e}"
+        print(err_msg)
+        ai_logger.error(err_msg)
 
     # Insert into events
     metadata = {
@@ -715,10 +696,10 @@ def _process_candidate_plate(frame, x1, y1, x2, y2, conf, camera, model, setting
     w = x2 - x1
     h = y2 - y1
 
-    if w < 25 or h < 10:
+    if w < 15 or h < 8:
         return False
     aspect_ratio = w / float(h)
-    if aspect_ratio < 1.2 or aspect_ratio > 6.0:
+    if aspect_ratio < 0.8 or aspect_ratio > 7.0:
         return False
 
     # Pad 10% around plate
@@ -747,10 +728,13 @@ def _process_candidate_plate(frame, x1, y1, x2, y2, conf, camera, model, setting
                 cam_id, memory_text, x1, y1, x2, y2, now
             )
             if not should_log:
+                ai_logger.info(f"[{camera['name']}] Plate Memory [{v_state}]: {memory_text} (suppressed: {reason})")
                 return False
             
             owner_str = f" ({memory_info.get('owner_name')})" if memory_info and memory_info.get('owner_name') else ""
-            print(f"[{camera['name']}] 🧠 PLATE MEMORY MATCH [{v_state}]: {memory_text}{owner_str} (conf: {memory_conf:.2f}) — {reason}", flush=True)
+            msg = f"[{camera['name']}] [PLATE MEMORY MATCH] [{v_state}]: {memory_text}{owner_str} (conf: {memory_conf:.2f}) - {reason}"
+            print(msg, flush=True)
+            ai_logger.info(msg)
             return _commit_plate(frame, plate_crop, x1, y1, x2, y2, 
                                memory_text, memory_conf, 1, camera, model, settings, source='memory', plate_info=memory_info, vehicle_state=v_state)
     
@@ -767,6 +751,7 @@ def _process_candidate_plate(frame, x1, y1, x2, y2, conf, camera, model, setting
                         cam_id, rectified, x1, y1, x2, y2, now
                     )
                     if not should_log:
+                        ai_logger.info(f"[{camera['name']}] Gemini read [{v_state}]: {rectified} (suppressed: {reason})")
                         return False
                     
                     plate_info = None
@@ -776,12 +761,16 @@ def _process_candidate_plate(frame, x1, y1, x2, y2, conf, camera, model, setting
                         store_plate(plate_crop, rectified, source='gemini')
                     
                     owner_str = f" ({plate_info.get('owner_name')})" if plate_info and plate_info.get('owner_name') else ""
-                    print(f"[{camera['name']}] 🤖 GEMINI VISION READ [{v_state}]: {rectified}{owner_str} (conf: {gemini_conf:.2f}) — {reason}", flush=True)
+                    msg = f"[{camera['name']}] [GEMINI VISION READ] [{v_state}]: {rectified}{owner_str} (conf: {gemini_conf:.2f}) - {reason}"
+                    print(msg, flush=True)
+                    ai_logger.info(msg)
                     
                     return _commit_plate(frame, plate_crop, x1, y1, x2, y2,
                                         rectified, gemini_conf, 1, camera, model, settings, source='gemini', plate_info=plate_info, vehicle_state=v_state)
         except Exception as e:
-            print(f"[{camera['name']}] Gemini error: {e}")
+            err_g = f"[{camera['name']}] Gemini error: {e}"
+            print(err_g)
+            ai_logger.error(err_g)
     
     # ═══════════════════════════════════════════════════════════════════
     # TIER 3: EasyOCR Local Fallback (Strict Gate: >= 75% confidence)
@@ -837,8 +826,9 @@ def _process_candidate_plate(frame, x1, y1, x2, y2, conf, camera, model, setting
         store_plate(best_crop, plate_text, source='easyocr')
 
     owner_str = f" ({plate_info.get('owner_name')})" if plate_info and plate_info.get('owner_name') else ""
-    print(f"[{camera['name']}] 📷 EASYOCR COMMITTED [{v_state}]: PLATE: {plate_text}{owner_str} "
-          f"(consensus from {num_readings} readings, conf: {consensus_conf:.2f}) — {reason}", flush=True)
+    msg = f"[{camera['name']}] 📷 EASYOCR COMMITTED [{v_state}]: PLATE: {plate_text}{owner_str} (consensus from {num_readings} readings, conf: {consensus_conf:.2f}) — {reason}"
+    print(msg, flush=True)
+    ai_logger.info(msg)
 
     return _commit_plate(frame, best_crop, x1, y1, x2, y2,
                         plate_text, consensus_conf, num_readings, camera, model, settings, source='easyocr', plate_info=plate_info, vehicle_state=v_state)
@@ -849,6 +839,7 @@ def handle(frame, results, camera, model, ai_model, conf_threshold,
     """Hierarchical License Plate Detection with Temporal Consensus."""
     detected = False
     candidates = []
+    direct_count = 0
 
     # 1. Direct detections
     for r in results:
@@ -857,8 +848,10 @@ def handle(frame, results, camera, model, ai_model, conf_threshold,
             if conf >= min(conf_threshold, 0.28):
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 candidates.append((x1, y1, x2, y2, conf))
+                direct_count += 1
 
     # 2. Two-Stage Zoom
+    zoom_count = 0
     v_detector = _get_vehicle_detector()
     if v_detector is not None:
         try:
@@ -880,11 +873,19 @@ def handle(frame, results, camera, model, ai_model, conf_threshold,
                                 if p_conf >= min(conf_threshold, 0.30):
                                     px1, py1, px2, py2 = map(int, pb.xyxy[0].tolist())
                                     candidates.append((vx1+px1, vy1+py1, vx1+px2, vy1+py2, p_conf))
+                                    zoom_count += 1
         except Exception as e:
             print(f"[{camera['name']}] Zoom error: {e}")
+
+    # Debug: log candidate counts periodically
+    if frame_count % (skip_frames * 10) == 0 or len(candidates) > 0:
+        msg = f"[{camera['name']}] ALPR frame {frame_count}: {direct_count} direct + {zoom_count} zoom = {len(candidates)} candidates"
+        print(msg, flush=True)
+        ai_logger.info(msg)
 
     for x1, y1, x2, y2, conf in candidates:
         if _process_candidate_plate(frame, x1, y1, x2, y2, conf, camera, model, settings):
             detected = True
 
     return detected
+

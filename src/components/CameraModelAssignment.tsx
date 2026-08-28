@@ -30,7 +30,8 @@ export default function CameraModelAssignment({ camera, onClose }: Props) {
         const { data: currentAssignments } = await supabase
             .from('camera_models')
             .select('ai_model_id')
-            .eq('camera_id', camera.id);
+            .eq('camera_id', camera.id)
+            .eq('is_active', true);
 
         if (allModels) setModels(allModels);
         if (currentAssignments) setAssignments(currentAssignments.map(a => a.ai_model_id));
@@ -55,10 +56,44 @@ export default function CameraModelAssignment({ camera, onClose }: Props) {
                 .from('camera_models')
                 .insert({
                     camera_id: camera.id,
-                    ai_model_id: modelId
+                    ai_model_id: modelId,
+                    is_active: true
                 });
+
+            // Auto-deploy model to a server if it has no server_id yet
+            const theModel = models.find(m => m.id === modelId);
+            if (theModel && !theModel.server_id) {
+                const { data: servers } = await supabase
+                    .from('ai_servers')
+                    .select('id')
+                    .eq('status', 'online')
+                    .limit(1);
+                if (servers && servers.length > 0) {
+                    await supabase
+                        .from('ai_models')
+                        .update({ server_id: servers[0].id })
+                        .eq('id', modelId);
+                    // Update local state so UI shows "Deployed"
+                    setModels(prev => prev.map(m =>
+                        m.id === modelId ? { ...m, server_id: servers[0].id } : m
+                    ));
+                }
+            }
+
             setAssignments(prev => [...prev, modelId]);
         }
+
+        // Notify AI server to pick up the change immediately
+        try {
+            await supabase.from('system_commands').insert({
+                command_type: 'force_refresh',
+                status: 'pending',
+                payload: { reason: `camera_model toggled for ${camera.name}` },
+            });
+        } catch (e) {
+            console.warn('Could not send force_refresh:', e);
+        }
+
         setProcessing(null);
     };
 

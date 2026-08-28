@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "stream": "cd streaming-server && mediamtx.exe",
+    "stream": "streaming-server\\mediamtx.exe streaming-server\\mediamtx.yml",
     "ai-server": "cd ai-server && py main.py"
   },
   "dependencies": {

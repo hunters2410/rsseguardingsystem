@@ -81,7 +81,7 @@ export default function LiveMonitoring() {
     if (cams) {
       setCameras(cams);
       camerasRef.current = cams;
-      const { data: assignments } = await supabase.from('camera_models').select('camera_id');
+      const { data: assignments } = await supabase.from('camera_models').select('camera_id').eq('is_active', true);
       if (assignments) {
         const counts = assignments.reduce((acc, curr) => {
           acc[curr.camera_id] = (acc[curr.camera_id] || 0) + 1;

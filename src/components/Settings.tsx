@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Save, RefreshCw, Mail, MessageSquare, Shield, Lock, Bell, User, Send, ScanLine, Trash2, Plus, Database, Download, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Save, RefreshCw, Mail, MessageSquare, Shield, Lock, Bell, User, Send, ScanLine, Trash2, Plus, Database, Download, CheckCircle2, AlertCircle, Server, Play, Square, Activity, Cpu, Radio } from 'lucide-react';
+import { useServerLauncher, formatUptime } from '../hooks/useServerLauncher';
 import { supabase, type SystemSettings } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ZoneSettings from './ZoneSettings';
@@ -10,7 +11,10 @@ export default function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
-    const [activeTab, setActiveTab] = useState<'general' | 'email' | 'sms' | 'security' | 'zones' | 'backup'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'email' | 'sms' | 'security' | 'zones' | 'backup' | 'system'>('general');
+
+    // Server launcher
+    const launcher = useServerLauncher(5000);
 
     // Backup state
     const [backupProgress, setBackupProgress] = useState<string[]>([]);
@@ -324,6 +328,8 @@ export default function Settings() {
                         <TabButton id="zones"    label="Zones & Boundaries"  icon={ScanLine} />
                         <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
                         <TabButton id="backup"   label="Database Backup"     icon={Database} />
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-2" />
+                        <TabButton id="system"   label="System Control"      icon={Server} />
                     </div>
                 </div>
 
@@ -874,6 +880,164 @@ export default function Settings() {
                         {activeTab === 'zones' && (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <ZoneSettings />
+                            </div>
+                        )}
+
+                        {activeTab === 'system' && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div>
+                                    <h2 className="text-base font-bold text-slate-900 dark:text-white mb-0.5">System Control</h2>
+                                    <p className="text-xs text-slate-500">Start and stop local servers without opening a terminal.</p>
+                                </div>
+
+                                {launcher.available === false && (
+                                    <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-3">
+                                        <AlertCircle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                                        <div className="text-sm text-amber-800 dark:text-amber-300">
+                                            <strong>Launcher not available.</strong> Server control only works when running <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">npm run dev</code>.
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* AI Server Card */}
+                                <div className="p-5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+                                                <Cpu size={18} className="text-violet-600 dark:text-violet-400" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">AI Server</h3>
+                                                <p className="text-xs text-slate-500">Python surveillance engine</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+                                                launcher.status.aiServer.status === 'running' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                                launcher.status.aiServer.status === 'stopped' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' :
+                                                launcher.status.aiServer.status === 'unavailable' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                            }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                                    launcher.status.aiServer.status === 'running' ? 'bg-green-500 animate-pulse' :
+                                                    launcher.status.aiServer.status === 'stopped' ? 'bg-slate-400' :
+                                                    'bg-blue-500 animate-ping'
+                                                }`} />
+                                                {launcher.status.aiServer.status.charAt(0).toUpperCase() + launcher.status.aiServer.status.slice(1)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+                                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <p className="text-slate-400 mb-0.5">PID</p>
+                                            <p className="font-mono font-semibold text-slate-800 dark:text-white">{launcher.status.aiServer.pid ?? '—'}</p>
+                                        </div>
+                                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <p className="text-slate-400 mb-0.5">Uptime</p>
+                                            <p className="font-mono font-semibold text-slate-800 dark:text-white">{formatUptime(launcher.status.aiServer.uptime)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            id="btn-start-ai-server"
+                                            onClick={launcher.startAI}
+                                            disabled={launcher.aiLoading || launcher.status.aiServer.status === 'running' || launcher.available === false}
+                                            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-green-600 hover:bg-green-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500 text-white text-sm font-semibold rounded-lg transition-all"
+                                        >
+                                            <Play size={14} />
+                                            {launcher.status.aiServer.status === 'starting' ? 'Starting...' : 'Start'}
+                                        </button>
+                                        <button
+                                            id="btn-stop-ai-server"
+                                            onClick={launcher.stopAI}
+                                            disabled={launcher.aiLoading || launcher.status.aiServer.status === 'stopped' || launcher.available === false}
+                                            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500 text-white text-sm font-semibold rounded-lg transition-all"
+                                        >
+                                            <Square size={14} />
+                                            {launcher.status.aiServer.status === 'stopping' ? 'Stopping...' : 'Stop'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Streaming Server Card */}
+                                <div className="p-5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                                                <Radio size={18} className="text-blue-600 dark:text-blue-400" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Streaming Server</h3>
+                                                <p className="text-xs text-slate-500">MediaMTX — RTSP / HLS / WebRTC</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+                                                launcher.status.streaming.status === 'running' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                                launcher.status.streaming.status === 'stopped' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' :
+                                                launcher.status.streaming.status === 'unavailable' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                            }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                                    launcher.status.streaming.status === 'running' ? 'bg-green-500 animate-pulse' :
+                                                    launcher.status.streaming.status === 'stopped' ? 'bg-slate-400' :
+                                                    'bg-blue-500 animate-ping'
+                                                }`} />
+                                                {launcher.status.streaming.status.charAt(0).toUpperCase() + launcher.status.streaming.status.slice(1)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-3 mb-4 text-xs">
+                                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <p className="text-slate-400 mb-0.5">PID</p>
+                                            <p className="font-mono font-semibold text-slate-800 dark:text-white">{launcher.status.streaming.pid ?? '—'}</p>
+                                        </div>
+                                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <p className="text-slate-400 mb-0.5">Uptime</p>
+                                            <p className="font-mono font-semibold text-slate-800 dark:text-white">{formatUptime(launcher.status.streaming.uptime)}</p>
+                                        </div>
+                                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <p className="text-slate-400 mb-0.5">HLS Port</p>
+                                            <p className="font-mono font-semibold text-slate-800 dark:text-white">:8888</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            id="btn-start-streaming-server"
+                                            onClick={launcher.startStream}
+                                            disabled={launcher.streamLoading || launcher.status.streaming.status === 'running' || launcher.available === false}
+                                            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-green-600 hover:bg-green-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500 text-white text-sm font-semibold rounded-lg transition-all"
+                                        >
+                                            <Play size={14} />
+                                            {launcher.status.streaming.status === 'starting' ? 'Starting...' : 'Start'}
+                                        </button>
+                                        <button
+                                            id="btn-stop-streaming-server"
+                                            onClick={launcher.stopStream}
+                                            disabled={launcher.streamLoading || launcher.status.streaming.status === 'stopped' || launcher.available === false}
+                                            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500 text-white text-sm font-semibold rounded-lg transition-all"
+                                        >
+                                            <Square size={14} />
+                                            {launcher.status.streaming.status === 'stopping' ? 'Stopping...' : 'Stop'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Last action message */}
+                                {launcher.lastMessage && (
+                                    <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl text-xs text-blue-800 dark:text-blue-300">
+                                        <Activity size={14} className="mt-0.5 flex-shrink-0" />
+                                        {launcher.lastMessage}
+                                    </div>
+                                )}
+
+                                <p className="text-xs text-slate-400 text-center">
+                                    Polls every 5 s · Status refreshes automatically
+                                </p>
                             </div>
                         )}
 
